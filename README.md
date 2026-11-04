@@ -4,7 +4,7 @@ Wai Intelligence is a server-rendered FastAPI decision-support workspace for Wat
 
 ## Quick links
 
-- **[Vultr VM deployment runbook](docs/VULTR_DEPLOYMENT.md)**
+- **[Step-by-step Vultr VM deployment guide](docs/VULTR_DEPLOYMENT.md)**
 - [Architecture and workflow boundaries](docs/ARCHITECTURE.md)
 - [Source data dictionary](docs/DATA_DICTIONARY.md)
 - [Accessibility audit](docs/ACCESSIBILITY_AUDIT.md)
@@ -106,11 +106,11 @@ Requirements: Python 3.12+, Docker Engine and Docker Compose plugin. PostgreSQL 
 
 5. Open `http://127.0.0.1:8000`. The local database connection in `.env.example` targets PostgreSQL on `localhost:5432`.
 
-The local demo accounts are `admin` / `WaiAdmin!2026` and `fundraiser` / `WaiUser!2026`. They are for local evaluation only. Do not use them for a public deployment. The `DEMO_SEED_USERS=false` setting disables these accounts; first-start sample opportunities, source definitions, fictional stewardship profiles and reporting metrics are still seeded by the current demonstration build. Review or replace those sample records before using the deployment with live operating data.
+The local demo accounts are `admin` / `WaiAdmin!2026` and `fundraiser` / `WaiUser!2026`. They are for local evaluation only. Do not use them for a public deployment. For a clean Vultr deployment, set both `DEMO_SEED_USERS=false` and `DEMO_SEED_DATA=false`. The app still initializes its standard public-source definitions and default fit criteria, but it does not create demo users or fictional workflow records in a new database. Existing records are not deleted when these settings are changed.
 
 ## Vultr deployment
 
-A dedicated, step-by-step VM deployment runbook is maintained separately to keep this overview concise: **[Vultr VM Deployment Guide](docs/VULTR_DEPLOYMENT.md)**. It covers the target architecture, VM provisioning, DNS and firewall, Docker installation, source-data placement, production secrets, HTTPS, account creation, backups, updates and troubleshooting.
+Follow the **[Step-by-step Vultr VM Deployment Guide](docs/VULTR_DEPLOYMENT.md)** from top to bottom. It identifies whether each command runs on your computer or inside the VM and provides the exact console selections, DNS and firewall rules, Docker installation commands, ZIP and CSV transfer commands, production environment settings, service startup, user creation, verification, backups and update procedure.
 
 The production topology is one Vultr Cloud Compute VM running Caddy, the FastAPI web application and PostgreSQL 16 with Docker Compose. Caddy publishes HTTPS; FastAPI and PostgreSQL remain on a private Docker network. No separate frontend hosting service is required.
 

@@ -367,3 +367,37 @@ def test_core_light_and_dark_text_colour_pairs_meet_wcag_aa_contrast():
         ('#ddc994', '#3b311c'), ('#ffffff', '#006d91'), ('#ffffff', '#006f92'),
     ]
     assert all(contrast_ratio(foreground, background) >= 4.5 for foreground, background in core_pairs)
+
+
+def test_production_seed_mode_initializes_configuration_without_demo_records(monkeypatch):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+    from sqlalchemy.pool import StaticPool
+    from app.database import Base
+    from app.models import (Source, AppSetting, Evidence, ReportMetric, PartnerCase,
+                            WorkTask, GrantProject, GrantObligation, NetworkRelation)
+    from app.services.seed import seed_app
+
+    monkeypatch.setattr(settings, "demo_seed_users", False)
+    monkeypatch.setattr(settings, "demo_seed_data", False)
+    engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    Base.metadata.create_all(engine)
+    LocalSession = sessionmaker(bind=engine)
+    db = LocalSession()
+    try:
+        seed_app(db)
+        assert db.query(Source).count() == 4
+        assert db.query(AppSetting).count() > 0
+        assert db.query(User).count() == 0
+        assert db.query(Opportunity).count() == 0
+        assert db.query(Donor).count() == 0
+        assert db.query(Evidence).count() == 0
+        assert db.query(ReportMetric).count() == 0
+        assert db.query(PartnerCase).count() == 0
+        assert db.query(WorkTask).count() == 0
+        assert db.query(GrantProject).count() == 0
+        assert db.query(GrantObligation).count() == 0
+        assert db.query(NetworkRelation).count() == 0
+    finally:
+        db.close()
+        engine.dispose()

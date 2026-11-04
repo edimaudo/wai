@@ -31,8 +31,8 @@ from app.services.localization import translate_html
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    if settings.is_production and (settings.secret_key in {"change-this-before-deployment", "replace-with-a-long-random-secret"} or settings.demo_seed_users):
-        raise RuntimeError("Production requires a unique SECRET_KEY and DEMO_SEED_USERS=false.")
+    if settings.is_production and (settings.secret_key in {"change-this-before-deployment", "replace-with-a-long-random-secret"} or settings.demo_seed_users or settings.demo_seed_data):
+        raise RuntimeError("Production requires a unique SECRET_KEY, DEMO_SEED_USERS=false and DEMO_SEED_DATA=false.")
     if settings.is_production and not settings.database_url.startswith(("postgresql://", "postgresql+psycopg://")):
         raise RuntimeError("Production requires PostgreSQL. SQLite is not supported for application deployment.")
     application.state.data_folder = str(settings.wai_data_dir)

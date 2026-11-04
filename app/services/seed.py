@@ -57,6 +57,26 @@ def seed_app(db: Session):
         for item in SOURCES:
             db.add(Source(**item, enabled=True, last_status="not_checked"))
         db.commit()
+
+    # Application defaults are operational configuration, not demo records.
+    defaults = {
+      "criteria_wash": "30", "criteria_geography": "20", "criteria_eligibility": "20", "criteria_timing": "15", "criteria_capacity": "15",
+      "criteria_focus_terms": "water, sanitation, hygiene, WASH, climate-resilient WASH, eau, assainissement, hygiène, EAH, résilience climatique",
+      "criteria_geography_terms": "international, ODA-eligible, Sub-Saharan Africa, Africa, Asia, Pacific, international, admissible à l’APD, Afrique subsaharienne, Afrique, Asie, Pacifique",
+      "criteria_ineligibility_terms": "invitation only, invitation-only, individual fellowship, individual applicant, sur invitation seulement, bourse individuelle, demandeur individuel",
+      "criteria_eligibility_rules": "Canadian-registered nonprofit or eligible international development partner;\nInternational WASH programme fit;\nConfirm country and applicant eligibility against each official call.",
+      "default_frequency_days":"14", "review_cost_minutes":"20", "source_scan_monthly_cost":"35", "opportunity_review_minutes":"20"
+    }
+    for key, value in defaults.items():
+        if not db.query(AppSetting).filter_by(key=key).first():
+            db.add(AppSetting(key=key, value=value))
+    db.commit()
+
+    # DEMO_SEED_DATA=false leaves production tables empty for staff-owned records.
+    # Source definitions and default fit criteria above are still initialized.
+    if not settings.demo_seed_data:
+        return
+
     if db.query(Opportunity).count() == 0:
         src = {s.name: s for s in db.query(Source).all()}
         gac_calls = src["Global Affairs Canada — International Assistance Calls"]
@@ -203,17 +223,6 @@ def seed_app(db: Session):
                           source_name="Synthetic relationship scenario", confidence="unverified", status="to_verify", synthetic=True),
         ])
         db.commit()
-    defaults = {
-      "criteria_wash": "30", "criteria_geography": "20", "criteria_eligibility": "20", "criteria_timing": "15", "criteria_capacity": "15",
-      "criteria_focus_terms": "water, sanitation, hygiene, WASH, climate-resilient WASH, eau, assainissement, hygiène, EAH, résilience climatique",
-      "criteria_geography_terms": "international, ODA-eligible, Sub-Saharan Africa, Africa, Asia, Pacific, international, admissible à l’APD, Afrique subsaharienne, Afrique, Asie, Pacifique",
-      "criteria_ineligibility_terms": "invitation only, invitation-only, individual fellowship, individual applicant, sur invitation seulement, bourse individuelle, demandeur individuel",
-      "criteria_eligibility_rules": "Canadian-registered nonprofit or eligible international development partner;\nInternational WASH programme fit;\nConfirm country and applicant eligibility against each official call.",
-      "default_frequency_days":"14", "review_cost_minutes":"20", "source_scan_monthly_cost":"35", "opportunity_review_minutes":"20"
-    }
-    for key, value in defaults.items():
-        if not db.query(AppSetting).filter_by(key=key).first(): db.add(AppSetting(key=key, value=value))
-    db.commit()
     from app.services.scoring import score_opportunity
     criteria = {row.key:row.value for row in db.query(AppSetting).all()}
     for opportunity in db.query(Opportunity).all():

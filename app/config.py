@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     gemini_model: str = "gemini-3.5-flash"
     session_https_only: bool = False
     demo_seed_users: bool = True
+    demo_seed_data: bool = True
     demo_admin_username: str = "admin"
     demo_admin_password: str = "WaiAdmin!2026"
     demo_user_username: str = "fundraiser"
