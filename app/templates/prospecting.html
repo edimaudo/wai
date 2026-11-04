@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block title %}{{ t('prospecting') }} | Wai Intelligence{% endblock %}
+{% block breadcrumb %}{{ t('prospecting') }}{% endblock %}
+{% block content %}
+<div class="page-heading"><div><span class="section-label">01 / FUNDING</span><h1>{{ t('opportunities_title') }}</h1><p>{{ t('opportunities_sub') }}</p></div><form method="post" action="/app/prospecting/refresh"><input type="hidden" name="csrf" value="{{ csrf_token }}"><button class="button button-primary" type="submit">↻ {{ t('refresh_sources') }}</button></form></div>
+{% if source_scan %}<div class="notice notice-info"><strong>{{ t('source_scan_result') }} · {{ source_scan.checked }}</strong><p>{{ source_scan.note }}</p>{% for result in source_scan.results %}<div class="scan-result"><span>{{ result.name }}</span><span>{{ result.status }}{% if result.http_status %} · HTTP {{ result.http_status }}{% endif %}{% if result.content_changed %} · CONTENT CHANGED{% endif %}</span></div>{% if result.signal %}<p class="micro-note">{{ result.signal }}</p>{% endif %}{% endfor %}</div>{% endif %}
+<div class="two-col-layout">
+  <section class="main-column">
+    <div class="toolbar"><form method="get" action="/app/prospecting" class="search-form"><label class="visually-hidden" for="prospect-search">{{ t('search') }} {{ t('prospecting') }}</label><input id="prospect-search" name="q" value="{{ q }}" placeholder="{{ t('search_placeholder') }}"><button class="button button-secondary button-small" type="submit">{{ t('search') }}</button></form><span class="muted small-text">{{ opportunities|length }} monitored leads</span></div>
+    {% for item in opportunities %}
+    <article class="panel opportunity-card">
+      <div class="opportunity-top"><div><div class="tag-row"><span class="status-pill status-neutral">{{ item.data_label }}</span><span class="score-pill">{{ item.fit_score }}/100 {{ t('fit') }}</span></div><details class="score-details"><summary>Score components</summary><div class="score-breakdown">{% for key,value in score_details[item.id].components.items() %}<span>{{ key|title }} <strong>{{ value }}</strong></span>{% endfor %}</div></details><h2>{{ item.title }}</h2><div class="opportunity-funder">{{ item.funder }} · {{ item.geography }}</div></div><div class="deadline-box"><small>{{ t('deadline') }}</small><strong>{{ item.deadline|datefmt(lang) if item.deadline else t('no_deadline') }}</strong></div></div>
+      {% set probability = score_details[item.id].probability %}
+      <section class="probability-box" aria-label="{{ t('win_probability') }}">
+        <div><span class="detail-label">{{ t('win_probability') }}</span><strong class="probability-value">{% if probability.value is not none %}{{ probability.value }}%{% else %}{{ t('not_available') }}{% endif %}</strong><span class="probability-kind">{% if probability.method == 'heuristic' %}{{ t('heuristic_label') }}{% else %}{{ t('not_estimated') }}{% endif %}</span></div>
+        <div class="probability-explanation"><p>{{ probability.note }}</p><details><summary>{{ t('probability_method') }}</summary><p>{{ probability.formula_note }}</p></details></div>
+      </section>
+      <p>{{ item.summary }}</p>
+      <div class="opportunity-detail-grid"><div><span class="detail-label">{{ t('eligibility') }}</span><p>{{ item.eligibility }}</p></div><div><span class="detail-label">Fit rationale</span><p>{{ item.fit_rationale }}</p></div><div><span class="detail-label">{{ t('uncertainties') }}</span><p>{{ item.uncertainties }}</p></div><div><span class="detail-label">Case for support</span><p>{{ item.case_for_support }}</p></div></div>
+      <div class="opportunity-footer"><div class="source-reference"><span class="detail-label">{{ t('source') }}</span><a href="{{ item.source_url }}" target="_blank" rel="noopener noreferrer">{{ item.funder }} official guidance ↗</a><small>{{ t('checked') }}: {{ item.source_checked_at.strftime('%b %d, %Y') if item.source_checked_at else 'Not recorded' }}</small></div><div class="decision-form"><span class="decision-state">{{ item.decision|replace('_',' ')|title }}</span><form method="post" action="/app/opportunity/{{ item.id }}/decision" class="inline-decision"><input type="hidden" name="csrf" value="{{ csrf_token }}"><select name="decision" aria-label="Staff decision"><option value="needs verification">Needs verification</option><option value="pursue">Pursue</option><option value="monitor">Monitor</option><option value="declined">Decline</option></select><input name="note" placeholder="Reason or verification note" aria-label="Decision note"><label class="checkbox-inline"><input type="checkbox" name="create_followup" value="1"> Task</label><button class="button button-secondary button-small" type="submit">{{ t('save') }}</button></form></div></div>
+    </article>
+    {% else %}<div class="panel empty-state">{{ t('no_records') }}</div>{% endfor %}
+  </section>
+  <aside class="side-column">
+    <div class="notice notice-info"><strong>{{ t('win_probability') }}</strong><p>{{ t('probability_heuristic_note') }}</p><p>{{ t('probability_na_note') }}</p></div>
+    <section class="panel"><div class="panel-heading"><div><h2>{{ t('criteria') }}</h2><p>{{ t('criteria_help') }}</p></div></div>
+      <form method="post" action="/app/prospecting/criteria" class="criteria-form"><input type="hidden" name="csrf" value="{{ csrf_token }}">
+        {% for key,label in [('wash','WASH mission alignment'),('geography','Geographic focus'),('eligibility','Applicant eligibility'),('timing','Timing and deadline'),('capacity','Delivery capacity')] %}<label>{{ label }}<input type="number" min="0" max="100" name="{{ key }}" value="{{ settings_rows.get('criteria_'+key, {'wash':'30','geography':'20','eligibility':'20','timing':'15','capacity':'15'}[key]) }}"></label>{% endfor %}
+        <p class="micro-note">{{ t('matching_terms_help') }}</p>
+        <label class="criteria-textarea">Priority focus terms<textarea name="focus_terms" rows="2">{{ settings_rows.get('criteria_focus_terms','water, sanitation, hygiene, WASH, climate-resilient WASH, eau, assainissement, hygiène, EAH, résilience climatique') }}</textarea></label>
+        <label class="criteria-textarea">Geographic terms<textarea name="geography_terms" rows="2">{{ settings_rows.get('criteria_geography_terms','international, ODA-eligible, Sub-Saharan Africa, Africa, Asia, Pacific, admissible à l’APD, Afrique subsaharienne, Afrique, Asie, Pacifique') }}</textarea></label>
+        <label class="criteria-textarea">Eligibility red-flag terms<textarea name="ineligibility_terms" rows="2">{{ settings_rows.get('criteria_ineligibility_terms','invitation only, invitation-only, individual fellowship, individual applicant, sur invitation seulement, bourse individuelle, demandeur individuel') }}</textarea></label>
+        <label class="criteria-textarea">Règles d’admissibilité pour l’examinateur<textarea name="eligibility_rules" rows="4">{{ settings_rows.get('criteria_eligibility_rules','Canadian-registered nonprofit or eligible international development partner; International WASH programme fit; Confirm country and applicant eligibility against each official call.') }}</textarea></label>
+        <button class="button button-secondary button-full" type="submit">Save and recalculate scores</button><small>{{ t('weights_note') }}</small>
+      </form>
+    </section>
+    <section class="panel"><div class="panel-heading"><div><h2>{{ t('source_list') }}</h2><p>Canadian funders with international activity</p></div></div>
+      {% for source in sources %}<div class="source-row"><span class="source-indicator {% if source.last_status == 'reachable' %}is-good{% endif %}"></span><div><a href="{{ source.url }}" target="_blank" rel="noopener noreferrer"><strong>{{ source.name }}</strong></a><small>{{ t('every') }} {{ source.frequency_days }} {{ t('days') }} · {% if source.last_checked_at %}{{ source.last_checked_at.strftime('%b %d, %Y') }}{% else %}Not checked{% endif %}</small></div></div>{% endfor %}
+    </section>
+    <section class="panel"><div class="panel-heading"><div><h2>{{ t('scan_cost') }}</h2><p>Illustrative operating assumptions</p></div></div><div class="cost-grid"><div><span>Sources monitored</span><strong>{{ sources|length }}</strong></div><div><span>Review minutes / lead</span><strong>{{ settings_rows.get('opportunity_review_minutes','20') }}</strong></div><div><span>Monthly monitor estimate</span><strong>CAD {{ settings_rows.get('source_scan_monthly_cost','35') }}</strong></div></div><p class="micro-note">Replace these assumptions with actual hosting, request volume, model-token and staff review costs. Continuous daily scanning is not enabled by default.</p></section>
+  </aside>
+</div>
+{% endblock %}

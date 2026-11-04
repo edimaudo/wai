@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}{{ t('exports_title') }} | Wai Intelligence{% endblock %}
+{% block breadcrumb %}{{ t('exports') }}{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><h1>{{ t('exports_title') }}</h1><p>{{ t('exports_sub') }}</p></div>
+  <a class="button button-primary" href="/app/exports/all.zip">{{ t('download_all_csv') }}</a>
+</div>
+<div class="notice notice-warn" role="note"><strong>{{ t('export_warning') }}</strong></div>
+<p class="micro-note">{{ t('export_note') }}</p>
+<section class="panel export-panel" aria-labelledby="workspace-export-heading">
+  <div class="panel-heading"><div><h2 id="workspace-export-heading">{{ t('workspace_data') }}</h2><p>{{ t('dataset') }}</p></div></div>
+  <div class="export-list">
+    {% for item in datasets if not item.key.startswith('source_') %}
+    <div class="export-row"><div><strong>{{ item.label }}</strong><small>{{ item.filename }}</small></div><a class="button button-secondary button-small" href="{{ item.url }}">{{ t('download_csv') }}</a></div>
+    {% endfor %}
+  </div>
+</section>
+<section class="panel export-panel" aria-labelledby="source-export-heading">
+  <div class="panel-heading"><div><h2 id="source-export-heading">{{ t('raw_sources') }}</h2><p>{{ t('data_folder') }}</p></div></div>
+  <div class="export-list">
+    {% for item in datasets if item.key.startswith('source_') %}
+    <div class="export-row"><div><strong>{{ item.label }}</strong><small>{{ item.filename }}</small></div><a class="button button-secondary button-small" href="{{ item.url }}">{{ t('download_csv') }}</a></div>
+    {% endfor %}
+  </div>
+</section>
+{% endblock %}

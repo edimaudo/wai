@@ -1,0 +1,18 @@
+{% extends 'base.html' %}
+{% block title %}{{ t('sign_in') }} | Wai Intelligence{% endblock %}
+{% block content %}
+<section class="signin-layout">
+  <div class="signin-brand-panel"><div class="signin-watermark"><svg viewBox="0 0 80 90" aria-hidden="true"><path d="M40 4C28 24 10 42 10 58a30 30 0 0 0 60 0C70 42 52 24 40 4Z" fill="currentColor"/><path d="M26 60c3 9 9 13 18 13" fill="none" stroke="white" stroke-width="4" stroke-linecap="round"/></svg></div><span class="section-label">Wai Intelligence</span><h1>Decisions connected to evidence.</h1><p>One workspace for funding, reporting, donor stewardship, ethical partnership review and grant delivery.</p></div>
+  <div class="signin-form-panel">
+    <div class="form-eyeline">STAFF WORKSPACE</div><h2>{{ t('welcome') }}</h2><p class="muted">Sign in to continue to Wai Intelligence.</p>
+    <form method="post" action="/signin" class="stack-form">
+      <input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="next_path" value="{{ next_path }}">
+      <label for="username">{{ t('username') }}</label><input id="username" name="username" autocomplete="username" required autofocus>
+      <label for="password">{{ t('password') }}</label><input id="password" name="password" type="password" autocomplete="current-password" required>
+      <button class="button button-primary button-full button-large" type="submit">{{ t('sign_in_action') }} <span>→</span></button>
+    </form>
+    <div class="demo-credentials"><div class="demo-title">{{ t('demo_access') }}</div>{% if demo_credentials %}<div class="credential-row"><div><strong>Administrator</strong><small>Full access and account controls</small></div><code>{{ demo_admin_username }} / {{ demo_admin_password }}</code><button type="button" class="copy-button" data-copy="{{ demo_admin_username }}">User</button></div><div class="credential-row"><div><strong>Fundraising lead</strong><small>Core workflows</small></div><code>{{ demo_user_username }} / {{ demo_user_password }}</code><button type="button" class="copy-button" data-copy="{{ demo_user_username }}">User</button></div>{% else %}<div class="credential-password"><span>Demo access is disabled for this deployment. Use your provisioned account.</span></div>{% endif %}</div>
+    <p class="signin-footnote">Demonstration credentials are for local evaluation only. Replace them and set a unique session secret before public deployment.</p>
+  </div>
+</section>
+{% endblock %}
