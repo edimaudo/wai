@@ -58,6 +58,15 @@ def test_demo_login_and_role_based_admin_access():
         assert client.get("/app/admin").status_code == 403
 
 
+
+def test_application_default_database_is_postgresql():
+    from app.config import Settings
+    defaults = Settings(_env_file=None)
+    assert Settings.model_fields['database_url'].default.startswith('postgresql+psycopg://')
+    database_module = Path('app/database.py').read_text(encoding='utf-8')
+    assert 'check_same_thread' not in database_module
+    assert 'data/wai_intelligence.db' not in Path('app/config.py').read_text(encoding='utf-8')
+
 def test_seed_users_are_password_hashed():
     db = SessionLocal()
     try:
@@ -77,7 +86,7 @@ def test_supplied_source_csvs_are_read_in_place_without_database_import():
         result = load_source_csvs(db)
         donor_count_after = db.query(Donor).count()
         assert result["read_only"] is True
-        assert result["rows"] == 9
+        assert result["rows"] == 12
         assert {item["name"] for item in result["files"]} == set(SOURCE_CSV_FILES)
         assert donor_count_after == donor_count_before  # no constituent rows become donor profiles
     finally:
@@ -97,6 +106,18 @@ def test_supplied_source_csvs_are_read_in_place_without_database_import():
     assert video_rows[0]["CONTACT_ID"] == "11199576"
     assert len(video_rows) == 3
 
+    profile_columns, profiles = read_source_records("constituent_profile_table.csv")
+    assert profile_columns == [
+        "CONSTITUENT_ID", "MANAGED_PROSPECT", "LIFETIME_GIVING", "LIFETIME_GIFT_COUNT",
+        "FIRST_GIFT_DATE", "LAST_GIFT_DATE", "LIFETIME_CRM_INTERACTIONS",
+        "FIRST_CRM_INTERACTION_DATE", "LAST_CRM_INTERACTION_DATE", "CAPACITY_ESTIMATE"
+    ]
+    assert len(profiles) == 3
+    assert profiles[0]["CONSTITUENT_ID"] == "437216659"
+    assert profiles[0]["CAPACITY_ESTIMATE"] == ""
+    assert profiles[1]["CAPACITY_ESTIMATE"] == "250,000 - 499,999"
+    assert profiles[2]["LIFETIME_GIVING"] == "33381.58"
+
 
 def test_dashboard_lists_source_csvs_as_read_only():
     with TestClient(app) as client:
@@ -106,8 +127,26 @@ def test_dashboard_lists_source_csvs_as_read_only():
         assert 'gift_transactions_table.csv' in response.text
         assert 'CRM_interacions_table.csv' in response.text
         assert 'video_email_data_table.csv' in response.text
+        assert 'constituent_profile_table.csv' in response.text
         assert 'not imported into the application database' in response.text
         assert 'import donor' not in response.text.lower()
+
+
+
+def test_constituent_profile_source_is_visible_and_joined_in_memory_only():
+    with TestClient(app) as client:
+        anonymous = client.get('/app/constituents', follow_redirects=False)
+        assert anonymous.status_code == 303
+        login(client, settings.demo_admin_username, settings.demo_admin_password)
+        response = client.get('/app/constituents')
+        assert response.status_code == 200
+        assert '437216659' in response.text
+        assert '857096450' in response.text
+        assert '238949049' in response.text
+        assert '250,000 - 499,999' in response.text
+        assert 'does not specify a currency' in response.text.lower()
+        assert 'Gift rows in source file' in response.text
+        assert 'not lifetime totals' in response.text.lower()
 
 
 def test_fit_score_is_weighted_and_not_probability():
@@ -151,6 +190,7 @@ def test_authenticated_csv_exports_and_zip_bundle():
         assert page.status_code == 200
         assert 'Download all CSV files' in page.text
         assert 'CRM_interacions_table.csv' in page.text
+        assert 'constituent_profile_table.csv' in page.text
 
         opportunities = client.get('/app/exports/opportunities.csv')
         assert opportunities.status_code == 200
@@ -166,6 +206,12 @@ def test_authenticated_csv_exports_and_zip_bundle():
         assert b'CRM_INTERACTION_DATE' in interaction.content  # original supplied column schema is preserved
         assert b'253623044' in interaction.content
 
+        constituent_profiles = client.get('/app/exports/source_constituent_profiles.csv')
+        assert constituent_profiles.status_code == 200
+        assert 'filename="constituent_profile_table.csv"' in constituent_profiles.headers['content-disposition']
+        assert b'CAPACITY_ESTIMATE' in constituent_profiles.content
+        assert b'250,000 - 499,999' in constituent_profiles.content
+
         response = client.get('/app/exports/all.zip')
         assert response.status_code == 200
         assert response.headers['cache-control'] == 'no-store'
@@ -173,7 +219,8 @@ def test_authenticated_csv_exports_and_zip_bundle():
             names = set(archive.namelist())
             assert 'opportunities.csv' in names
             assert 'donors.csv' in names
-            assert 'source_interactions.csv' in names
+            assert 'CRM_interacions_table.csv' in names
+            assert 'constituent_profile_table.csv' in names
             assert 'source_reporting_metrics.csv' not in names
             document_header = archive.read('grant_documents.csv').decode('utf-8-sig').splitlines()[0]
             assert 'extracted_text' not in document_header
@@ -236,7 +283,7 @@ def test_french_is_persisted_through_login_and_core_pages_are_localized():
         login(client, settings.demo_admin_username, settings.demo_admin_password)
         for path in ['/app', '/app/prospecting', '/app/reporting', '/app/stewardship',
                      '/app/diligence', '/app/compliance', '/app/network', '/app/evidence',
-                     '/app/tasks', '/app/exports', '/app/admin']:
+                     '/app/tasks', '/app/exports', '/app/constituents', '/app/admin']:
             response = client.get(path)
             assert response.status_code == 200, path
             soup = BeautifulSoup(response.text, 'html.parser')
@@ -249,11 +296,14 @@ def test_french_is_persisted_through_login_and_core_pages_are_localized():
         assert 'Relations avec les donateurs' in client.get('/app').text
         stewardship_fr = client.get('/app/stewardship').text
         assert 'Ces profils fictifs sont distincts' in stewardship_fr
+        constituent_fr = client.get('/app/constituents').text
+        assert 'Données sources des profils de constituants' in constituent_fr
+        assert 'Identifiant du constituant' in constituent_fr
 
 
 def test_workspace_pages_have_accessible_names_landmarks_and_chart_tables():
     paths = ['/app', '/app/prospecting', '/app/reporting', '/app/stewardship',
-             '/app/stewardship/1', '/app/diligence', '/app/compliance', '/app/network',
+             '/app/stewardship/1', '/app/constituents', '/app/diligence', '/app/compliance', '/app/network',
              '/app/evidence', '/app/tasks', '/app/exports', '/app/admin']
     with TestClient(app) as client:
         login(client, settings.demo_admin_username, settings.demo_admin_password)

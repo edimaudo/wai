@@ -1,125 +1,135 @@
 # Wai Intelligence
 
-Wai Intelligence is a bilingual FastAPI decision-support workspace for WaterAid Canada. It connects five staff-reviewed workflows through a shared evidence register, decisions, follow-up tasks and feedback records.
+Wai Intelligence is a server-rendered FastAPI decision-support workspace for WaterAid Canada. It brings five related workflows into one authenticated application. It is designed for a small team that needs to identify opportunities, understand performance, steward donor relationships, document partnership risk and manage grant obligations without splitting work across disconnected tools.
 
-## Product capabilities
+## Quick links
 
-1. **Funding prospecting** — tracks selected Canadian public funder sources, summarizes funding pathways, scores fit against editable criteria, records staff decisions and surfaces eligibility/deadline uncertainties.
-2. **Reporting intelligence** — compares synthetic fundraising, donor and engagement measures; provides source-linked charts and audience-specific draft narratives.
-3. **Donor stewardship** — uses synthetic donor histories, preferences and restrictions to prepare reviewable briefs and communication drafts. Follow-up tasks remain inside Wai Intelligence.
-4. **Ethical partnership due diligence** — organizes public-source findings and fictional cases, distinguishes allegations from investigations and formal findings, and leaves Go/No-Go decisions with authorized staff.
-5. **Proposal and grant compliance** — reviews uploaded proposal and grant documents, records candidate obligations, tracks versions and identifies document, clause and deadline bottlenecks.
+- **[Vultr VM deployment runbook](docs/VULTR_DEPLOYMENT.md)**
+- [Architecture and workflow boundaries](docs/ARCHITECTURE.md)
+- [Source data dictionary](docs/DATA_DICTIONARY.md)
+- [Accessibility audit](docs/ACCESSIBILITY_AUDIT.md)
+- [Operating cost model](docs/OPERATING_COST_MODEL.md)
 
-The work areas share evidence, internal tasks, reviewer feedback and documented relationships. A decision in one workflow can create follow-up work in another while preserving its evidence trail.
+## Architecture
 
-## Integrations and data boundaries
+The browser uses ordinary HTML routes and form submissions. FastAPI serves the web pages, static assets and workflow actions; there is no separately hosted frontend and no API-based client-side routing. Caddy is the public web entry point and provides HTTPS. PostgreSQL stores application records. Source CSVs remain files and are mounted read-only into the application container.
 
-There are **no CRM, Outlook, Asana, email-sending, calendar-sync or external task-management integrations**. The three CSV files supplied in the project brief live in `data/source/` and are read directly from that folder through `WAI_DATA_DIR`. They are opened read-only for source inspection and CSV export; their rows are **not imported into the application database**, copied into donor profiles, or automatically joined to other records. The app never modifies the source files. The stewardship screen uses separate, clearly labelled fictional demonstration profiles because the supplied CSV schemas do not contain donor names, communication preferences or consent restrictions. Tasks and reminders are maintained within Wai Intelligence.
+```mermaid
+flowchart TB
+    User[Staff browser<br/>English or Canadian French] --> DNS[Domain DNS]
+    DNS --> Caddy[Caddy reverse proxy<br/>HTTPS and security headers]
+    subgraph VM[Vultr Cloud Compute VM]
+      Caddy --> Web[FastAPI web application<br/>Jinja HTML routes and static assets]
+      Web --> Auth[Session authentication<br/>Role and access checks]
+      Web --> Workflows[Five connected workflows]
+      Workflows --> Prospect[Funding prospecting]
+      Workflows --> Reporting[Reporting intelligence]
+      Workflows --> Stewardship[Donor stewardship]
+      Workflows --> Diligence[Ethical partnership due diligence]
+      Workflows --> Grants[Proposal and grant compliance]
+      Prospect --> Shared[Shared evidence, decisions,<br/>feedback and internal tasks]
+      Reporting --> Shared
+      Stewardship --> Shared
+      Diligence --> Shared
+      Grants --> Shared
+      Web <--> PG[(PostgreSQL<br/>private Docker network)]
+      Web --> CSV[Read-only source folder<br/>WAI_DATA_DIR]
+      Web --> Uploads[(Persistent document volume)]
+    end
+    Web -. optional outbound requests .-> Gemini[Gemini API<br/>when configured]
+    Web -. selected public-source checks .-> Public[Public funder websites]
+```
 
-Gemini is used only for optional draft and analysis assistance when `GOOGLE_API_KEY` is configured. The model never approves an opportunity, donor communication, partnership or grant obligation. Outputs require staff review. The configured model ID is `gemini-3.5-flash` and can be changed with `GEMINI_MODEL`.
+### Use cases
 
-## Language support
+| Workflow | What it supports | Decision owner |
+|---|---|---|
+| Funding prospecting | Monitor selected Canadian funders, assess WASH and international-development fit, summarize eligibility and deadlines, identify uncertainties and prepare a first-contact brief. | Fundraising staff decide whether to pursue. |
+| Reporting intelligence | Compare periods, check definitions and data quality, flag trends/anomalies and prepare board, leadership or staff narratives with evidence links. | Staff verify the analysis and approve the report. |
+| Donor stewardship | Review source-backed constituent profile and activity data; use separate fictional records to demonstrate preference-aware draft communications. | Fundraisers approve any detail, task or communication. Nothing is sent automatically. |
+| Ethical partnership due diligence | Organize public evidence against review criteria, label uncertainty and identify questions or escalation needs. | Authorized staff make the Go/No-Go decision. Demo criteria remain assumptions until the approved WaterAid framework is provided. |
+| Proposal and grant compliance | Review proposals and grant documents, extract candidate obligations, connect clauses to dates and versions, and flag gaps or delivery bottlenecks. | Programme and grant staff verify each interpretation and obligation. |
 
-The application interface is available in Canadian English (`en-CA`) and Canadian French (`fr-CA`), including localized date formats, dynamic status labels and validation messages. The selected language is preserved during sign-in. AI prompts request the selected language for generated drafts and source-monitoring summaries. Official funder names, source URLs, uploaded source documents and original source CSV content are preserved in their original language; they are not silently translated or altered.
+The workflows share an evidence register, review decisions, feedback and an internal task list. This is the interoperability layer: for example, a funding lead can create a verification task, and a grant-document finding can be assigned and tracked without moving it into another task platform.
 
-## Data and CSV exports
+## Source datasets
 
-Place approved source CSV files in `data/source/` or configure `WAI_DATA_DIR` to another readable folder. The loader does not modify source files and treats constituent/contact identifiers as strings.
+Place the approved CSV files in `data/source/` or set `WAI_DATA_DIR` to another directory readable by the application. Docker mounts that directory read-only. The application reads source rows in place and does not insert them into PostgreSQL, modify the original files or create donor records from them.
 
-The three source files supplied in the brief are included in `data/source/`:
+The four expected files are:
 
+- `constituent_profile_table.csv`
 - `gift_transactions_table.csv`
-- `CRM_interacions_table.csv` (filename preserved as supplied; interaction field names are unchanged)
+- `CRM_interacions_table.csv` — filename spelling is preserved from the supplied brief.
 - `video_email_data_table.csv`
 
-The reporting demonstration metrics are a separate synthetic dataset seeded into the reporting workspace. They are not presented as a fourth user-supplied source file.
+The Constituent Source Data view is available from Donor Stewardship. It reads the profile table and performs an in-memory match on the exact `CONSTITUENT_ID` against the transaction, CRM interaction and email/video files. The view shows the counts of matching rows in those files; these counts are not represented as lifetime totals. Nothing from the join is persisted to PostgreSQL. Constituent and contact identifiers are treated as strings.
 
-Authenticated staff can open **Data exports** in the workspace and download each dataset separately, or download a ZIP containing all available CSV datasets. Exports include opportunities, separate fictional stewardship demo profiles, reporting measures, partner cases, evidence, internal tasks, public source settings, grant project/document metadata, obligations, staff feedback and the three source CSV files. The source CSVs are downloaded from the configured folder; the other datasets are workspace records. Grant document exports intentionally omit extracted document text and server file paths. CSV values are serialized with formula-injection protection. CSV field names remain stable in English for interoperability with analysis tools; the UI and export descriptions are bilingual.
+`LIFETIME_GIVING` is displayed exactly as provided because the source snippet does not specify a currency. `CAPACITY_ESTIMATE` is displayed as a source-provided field, not independently inferred or validated. Blank fields remain blank in the source and appear as “Not provided” in the interface.
 
-CSV export URLs:
+**Dataset completeness:** the ZIP package includes the three rows shown in the constituent-profile snippet and the sample rows from the earlier brief. It does not contain the full production exports. Replace those samples with the approved complete datasets before a pilot. Keep production constituent data on private, access-controlled storage and do not commit it to a public Git repository.
 
-- `/app/exports` — export centre
-- `/app/exports/{dataset}.csv` — one dataset
-- `/app/exports/all.zip` — all available datasets in one ZIP
+The authenticated Data Exports page provides individual CSV downloads and a ZIP bundle. Source-file exports retain the original file names and columns. Workspace-record exports are separate from the source files.
 
-All export routes require an authenticated session. Exports may contain sensitive donor or operational information and must be stored only in approved, access-controlled locations.
+## Database choice and persistence
+
+The earlier scaffold created `data/wai_intelligence.db` because its local development default was SQLite. It contained seeded demonstration records and was included in the previous ZIP by mistake, despite the Vultr Docker Compose design already provisioning PostgreSQL. That mismatch is corrected here. This package does not migrate any changes made in an older SQLite copy; export any records you intentionally added to that old local demo before discarding it.
+
+**The application runtime now defaults to PostgreSQL.** The Vultr and Docker Compose deployment uses the PostgreSQL 16 service and a persistent `postgres_data` volume. The database is on the private Compose network; it is not exposed to the public internet. The old `.db` file has been removed from this package, and database artifacts are ignored by Git. Uploaded grant documents use a separate persistent Docker volume. Source CSVs remain outside the database.
+
+PostgreSQL stores application-managed records such as users, roles, funding leads, reporting metrics, fictional stewardship examples, due-diligence cases, evidence, tasks, grant-document metadata and obligations. It does not store the raw source CSV rows.
 
 ## Local setup
 
-Requirements: Python 3.12+.
+Requirements: Python 3.12+, Docker Engine and Docker Compose plugin. PostgreSQL is used locally and on Vultr.
 
-```bash
-cp .env.example .env
-python -m venv .venv
-source .venv/bin/activate       # Windows: .venv\\Scripts\\activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
+1. Copy `.env.example` to `.env`. For a local demonstration, its development-only values are sufficient. Do not reuse them in a public deployment.
+2. Start the PostgreSQL service:
 
-Open `http://127.0.0.1:8000`.
+   ```bash
+   docker compose up -d db
+   ```
 
-### Local demonstration accounts
+3. Create and activate a Python environment, then install dependencies:
 
-| Role | Username | Password |
-|---|---|---|
-| Administrator | `admin` | `WaiAdmin!2026` |
-| Staff user | `fundraiser` | `WaiUser!2026` |
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate       # Windows: .venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
 
-These credentials are seeded for local evaluation only. Replace them and turn off demo seeding before any public deployment.
+4. Start the web application:
 
-## Configuration
+   ```bash
+   uvicorn app.main:app --reload
+   ```
 
-| Variable | Purpose |
-|---|---|
-| `ENVIRONMENT` | Set to `production` for production safety checks. |
-| `SECRET_KEY` | Long, random session-signing secret. |
-| `DATABASE_URL` | SQLite locally; PostgreSQL for the Vultr deployment. |
-| `WAI_DATA_DIR` | Folder containing approved source CSVs. |
-| `UPLOAD_DIR` | Persistent location for uploaded documents. |
-| `GOOGLE_API_KEY` | Optional Gemini API credential. |
-| `GEMINI_MODEL` | Defaults to `gemini-3.5-flash`. |
-| `SESSION_HTTPS_ONLY` | Set `true` behind HTTPS in production. |
-| `DEMO_SEED_USERS` | Set `false` in production; provision named users separately. |
+5. Open `http://127.0.0.1:8000`. The local database connection in `.env.example` targets PostgreSQL on `localhost:5432`.
+
+The local demo accounts are `admin` / `WaiAdmin!2026` and `fundraiser` / `WaiUser!2026`. They are for local evaluation only. Do not use them for a public deployment. The `DEMO_SEED_USERS=false` setting disables these accounts; first-start sample opportunities, source definitions, fictional stewardship profiles and reporting metrics are still seeded by the current demonstration build. Review or replace those sample records before using the deployment with live operating data.
 
 ## Vultr deployment
 
-The repository includes a Dockerfile, Docker Compose configuration with PostgreSQL, Caddy reverse proxy and persistent document/database volumes. Before starting:
+A dedicated, step-by-step VM deployment runbook is maintained separately to keep this overview concise: **[Vultr VM Deployment Guide](docs/VULTR_DEPLOYMENT.md)**. It covers the target architecture, VM provisioning, DNS and firewall, Docker installation, source-data placement, production secrets, HTTPS, account creation, backups, updates and troubleshooting.
 
-1. Create a Vultr VM and point the domain's DNS A/AAAA records to it.
-2. Install Docker Engine and the Docker Compose plugin.
-3. Copy the repository to the VM.
-4. Create `.env` with a unique `SECRET_KEY`, strong `POSTGRES_PASSWORD`, valid `DOMAIN`, `ENVIRONMENT=production`, `SESSION_HTTPS_ONLY=true`, and `DEMO_SEED_USERS=false`.
-5. Set `GOOGLE_API_KEY` only if Gemini assistance is required.
-6. Start with `docker compose up -d --build` and verify `https://your-domain/healthz`.
-7. Provision named administrator and staff accounts using the documented account-management process before disabling demo seeding.
+The production topology is one Vultr Cloud Compute VM running Caddy, the FastAPI web application and PostgreSQL 16 with Docker Compose. Caddy publishes HTTPS; FastAPI and PostgreSQL remain on a private Docker network. No separate frontend hosting service is required.
 
-Do not deploy with the demonstration credentials or the example session secret. Restrict SSH, apply OS updates, configure backups and monitor disk usage. This package has not itself provisioned a Vultr VM or public domain.
+## Verification
 
-## Tests
-
-Run:
+Run the test suite against PostgreSQL. Start the local PostgreSQL service first, then run pytest:
 
 ```bash
+docker compose up -d db
 python -m pytest -q
 ```
 
-The test suite covers authentication, role restrictions, CSV loading without source mutation, exports, heuristic/N/A win-probability behaviour, bilingual session handling and key accessibility semantics.
+The GitHub Actions workflow also provisions PostgreSQL 16 for the test job.
 
-## Accessibility
+## Documentation
 
-The interface is engineered toward **WCAG 2.2 Level AA**. Implemented measures include semantic page landmarks, skip navigation, programmatic labels, visible keyboard focus, keyboard-operable native controls, responsive layouts, text scaling, reduced-motion support, high-contrast focus indicators, forced-colours support, chart data tables and an explicit document language. See [`docs/ACCESSIBILITY_AUDIT.md`](docs/ACCESSIBILITY_AUDIT.md).
+- [`docs/DATA_DICTIONARY.md`](docs/DATA_DICTIONARY.md) — source CSV schemas, field meanings and read-only handling.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) — workflow boundaries, shared records and security model.
+- [`docs/ACCESSIBILITY_AUDIT.md`](docs/ACCESSIBILITY_AUDIT.md) — WCAG 2.2 AA target, automated checks and required manual verification.
+- [`docs/OPERATING_COST_MODEL.md`](docs/OPERATING_COST_MODEL.md) — demonstration operating-cost assumptions.
 
-Automated route/DOM checks are not a formal conformance certification. Before production acceptance, complete the manual keyboard, screen-reader, zoom/reflow and contrast verification listed in the audit document with the actual deployed browser/assistive-technology combinations.
-
-## Win-probability approach
-
-The fit score and win-probability estimate are different measures. No historical WaterAid application/award outcome dataset was supplied. Where the applicant eligibility gate is sufficiently clear, the prospecting view therefore displays a **heuristic estimate**, labelled as such, based on the weighted fit score and transparent eligibility/timing adjustments. It is bounded and intended only to prioritize staff review; it is not a calibrated probability, prediction or funding claim. The view displays **N/A with a reason** when a deadline has passed, eligibility information is missing, or applicant type, invitation status or another critical eligibility condition remains unresolved. Historical application, eligibility, submission, decision and award data are required before the heuristic can be replaced by a calibrated model.
-
-## Important demonstration limits
-
-- The three source CSVs contain only the sample rows supplied in the project brief. The donor stewardship profiles and reporting metrics shown elsewhere in the app are separate fictional demonstration records; source CSV rows are not imported or joined to them.
-- The supplied ethical standards PDF was not available during the build; due-diligence criteria in the demonstration are assumptions, not WaterAid policy.
-- Source monitoring checks configured pages for availability/change; it does not prove that an opportunity is open or that WaterAid is eligible.
-- Document extraction is text-based. Scanned-document OCR and clause-by-clause redlining are not included.
-- CRM, Outlook and Asana connectors are intentionally absent.
-- This application is a demonstration starter, not an approved production system for sensitive constituent records.
+The interface supports Canadian English and Canadian French. It is engineered toward WCAG 2.2 AA; automated tests do not constitute a formal accessibility conformance certification. Complete the manual keyboard, screen-reader, zoom/reflow and browser checks in the accessibility audit before production acceptance.

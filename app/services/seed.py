@@ -225,6 +225,7 @@ SOURCE_CSV_FILES = (
     "gift_transactions_table.csv",
     "CRM_interacions_table.csv",
     "video_email_data_table.csv",
+    "constituent_profile_table.csv",
 )
 
 

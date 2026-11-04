@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     app_name: str = "Wai Intelligence"
     environment: str = "development"
     secret_key: str = "change-this-before-deployment"
-    database_url: str = f"sqlite:///{(ROOT_DIR / 'data' / 'wai_intelligence.db').as_posix()}"
+    database_url: str = "postgresql+psycopg://wai_app:dev-only-change-me@localhost:5432/wai_intelligence"
     wai_data_dir: Path = ROOT_DIR / "data" / "source"
     upload_dir: Path = ROOT_DIR / "data" / "uploads"
     google_api_key: str | None = None

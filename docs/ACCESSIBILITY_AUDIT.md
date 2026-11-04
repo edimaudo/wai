@@ -17,6 +17,7 @@ The application is engineered toward WCAG 2.2 Level AA. Accessibility is treated
 | Touch targets | Theme and language controls are at least 44px; compact buttons at least 40px; focusable summary controls are enlarged. | CSS inspection. |
 | Motion and display modes | Reduced-motion media query, forced-colors support and light/dark themes. | CSS inspection; OS/browser mode checks still required. |
 | Charts | Plotly visualizations have associated, visible-on-demand HTML data tables with captions and row/column headers. | DOM inspection of chart/table relationships. |
+| Constituent source data | The profile view uses a labelled search field, table caption, scoped headers, row headers and a keyboard-focusable horizontal table region. | Route and form-label tests include `/app/constituents`. |
 | Authentication | Native input fields; password manager/autofill and paste are not blocked by custom scripts. | Code inspection; accessible authentication flow must be validated with assistive technology. |
 
 ## Manual release checklist

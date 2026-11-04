@@ -31,8 +31,10 @@ from app.services.localization import translate_html
 
 @asynccontextmanager
 async def lifespan(application: FastAPI):
-    if settings.is_production and (settings.secret_key == "change-this-before-deployment" or settings.demo_seed_users):
+    if settings.is_production and (settings.secret_key in {"change-this-before-deployment", "replace-with-a-long-random-secret"} or settings.demo_seed_users):
         raise RuntimeError("Production requires a unique SECRET_KEY and DEMO_SEED_USERS=false.")
+    if settings.is_production and not settings.database_url.startswith(("postgresql://", "postgresql+psycopg://")):
+        raise RuntimeError("Production requires PostgreSQL. SQLite is not supported for application deployment.")
     application.state.data_folder = str(settings.wai_data_dir)
     Base.metadata.create_all(bind=engine)
     from app.database import SessionLocal
@@ -360,7 +362,65 @@ def stewardship(request: Request, db: Session = Depends(get_db)):
     user = get_user(request, db)
     if not user: return RedirectResponse("/signin", status_code=303)
     donors = db.query(Donor).order_by(Donor.display_name).all()
-    return page(request, "stewardship.html", user=user, workspace=True, donors=donors)
+    profiles, constituent_source_error = get_constituent_profiles()
+    return page(request, "stewardship.html", user=user, workspace=True, donors=donors,
+                constituent_profiles=profiles, constituent_source_error=constituent_source_error)
+
+
+def get_constituent_profiles() -> tuple[list[dict[str, str | int]], str | None]:
+    """Build an in-memory, read-only constituent view from the approved source CSVs.
+
+    Records are keyed by the exact source CONSTITUENT_ID and are never persisted
+    to SQLAlchemy donor tables. Related source-row counts are shown only as
+    matches in the currently supplied detail CSVs, not as lifetime totals.
+    """
+    from collections import Counter
+    from app.services.seed import read_source_records
+
+    try:
+        _columns, profiles = read_source_records("constituent_profile_table.csv")
+        _gift_columns, gifts = read_source_records("gift_transactions_table.csv")
+        _interaction_columns, interactions = read_source_records("CRM_interacions_table.csv")
+        _engagement_columns, engagement = read_source_records("video_email_data_table.csv")
+    except FileNotFoundError as exc:
+        return [], f"Required source file is missing: {exc.args[0]}"
+    except Exception as exc:
+        return [], f"Could not read constituent source data: {exc.__class__.__name__}"
+
+    gift_counts = Counter(row.get("CONSTITUENT_ID", "") for row in gifts)
+    interaction_counts = Counter(row.get("CONSTITUENT_ID", "") for row in interactions)
+    engagement_counts = Counter(row.get("CONSTITUENT_ID", "") for row in engagement)
+
+    output: list[dict[str, str | int]] = []
+    for record in profiles:
+        constituent_id = str(record.get("CONSTITUENT_ID", ""))
+        row: dict[str, str | int] = dict(record)
+        row["GIFT_TRANSACTION_ROWS"] = gift_counts[constituent_id]
+        row["CRM_INTERACTION_ROWS"] = interaction_counts[constituent_id]
+        row["EMAIL_VIDEO_ROWS"] = engagement_counts[constituent_id]
+        output.append(row)
+    output.sort(key=lambda item: str(item.get("CONSTITUENT_ID", "")))
+    return output, None
+
+
+@app.get("/app/constituents", response_class=HTMLResponse)
+def constituent_data(request: Request, q: str = "", db: Session = Depends(get_db)):
+    user = get_user(request, db)
+    # The dataset itself remains in the configured source folder and is read in place.
+    if not user:
+        return RedirectResponse("/signin", status_code=303)
+    profiles, source_error = get_constituent_profiles()
+    total_profiles = len(profiles)
+    managed_count = sum(1 for row in profiles if row.get("MANAGED_PROSPECT") == "1")
+    capacity_count = sum(1 for row in profiles if str(row.get("CAPACITY_ESTIMATE", "")).strip())
+    filtered = profiles
+    query = q.strip().lower()
+    if query:
+        filtered = [row for row in profiles if query in str(row.get("CONSTITUENT_ID", "")).lower()
+                    or query in str(row.get("CAPACITY_ESTIMATE", "")).lower()]
+    return page(request, "constituents.html", user=user, workspace=True,
+                profiles=filtered, total_profiles=total_profiles, managed_count=managed_count,
+                capacity_count=capacity_count, query=q, source_error=source_error)
 
 @app.get("/app/stewardship/{donor_id}", response_class=HTMLResponse)
 def donor_detail(donor_id: int, request: Request, db: Session = Depends(get_db)):
@@ -720,6 +780,7 @@ RAW_SOURCE_EXPORTS = {
     "source_gifts": "gift_transactions_table.csv",
     "source_interactions": "CRM_interacions_table.csv",
     "source_video_email": "video_email_data_table.csv",
+    "source_constituent_profiles": "constituent_profile_table.csv",
 }
 EXPORT_LABELS = {
     "opportunities": "Funding opportunities", "donors": "Synthetic stewardship demo profiles",
@@ -729,6 +790,7 @@ EXPORT_LABELS = {
     "grant_obligations": "Grant obligations", "feedback": "Staff feedback",
     "source_gifts": "Gift transactions source CSV", "source_interactions": "CRM interaction source CSV",
     "source_video_email": "Video and email engagement source CSV",
+    "source_constituent_profiles": "Constituent profile source CSV",
 }
 
 
@@ -797,7 +859,8 @@ def export_all_csv(request: Request, db: Session = Depends(get_db)):
     with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for dataset in EXPORT_LABELS:
             try:
-                zf.writestr(f"{dataset}.csv", build_dataset_csv(dataset, db))
+                archive_name = RAW_SOURCE_EXPORTS.get(dataset, f"{dataset}.csv")
+                zf.writestr(archive_name, build_dataset_csv(dataset, db))
             except HTTPException as exc:
                 if exc.status_code != 404:
                     raise
@@ -812,8 +875,9 @@ def export_dataset_csv(dataset: str, request: Request, db: Session = Depends(get
     if not user:
         return RedirectResponse("/signin", status_code=303)
     content = build_dataset_csv(dataset, db)
+    download_name = RAW_SOURCE_EXPORTS.get(dataset, f"wai-{dataset}.csv")
     return Response(content=content, media_type="text/csv; charset=utf-8",
-                    headers={"Content-Disposition": f'attachment; filename="wai-{dataset}.csv"',
+                    headers={"Content-Disposition": f'attachment; filename="{download_name}"',
                              "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"})
 
 
