@@ -1,336 +1,190 @@
-# Wai Intelligence: step-by-step Vultr deployment
+# Wai Intelligence — deploy the web app on Vultr
 
-This runbook deploys the Wai Intelligence website and FastAPI backend to **one Vultr Cloud Compute VM**. Follow the steps in order. Each command is labelled to show whether it belongs on your own computer or inside the VM.
+This guide deploys the existing GitHub application to one Vultr VM. **You do not need to buy a domain, register a DNS service, or host a separate frontend.** Staff open the website using the VM's public IPv4 address:
 
-The deployment uses:
+`https://YOUR_VULTR_PUBLIC_IP`
 
-- Ubuntu 24.04 LTS on Vultr Cloud Compute.
-- Docker Compose to run the application services.
-- FastAPI to serve both the website and its backend workflows.
-- PostgreSQL 16 for application-managed records.
-- Caddy for the public website, HTTPS certificates and reverse proxy.
-- The four supplied CSV datasets in a host folder mounted read-only into the app container.
+The deployment is:
 
-There is no separate Vercel frontend and no separate frontend hosting account.
+- GitHub repository: `https://github.com/edimaudo/wai`
+- One Vultr Cloud Compute VM running Ubuntu 24.04
+- Docker Compose running FastAPI, PostgreSQL 16 and Caddy
+- Caddy obtains and renews a publicly trusted HTTPS certificate for the VM's IPv4 address
+- PostgreSQL and uploaded documents persist in Docker volumes
+- Production CSV files are stored outside the Git checkout and mounted read-only into the app
 
----
+FastAPI serves the HTML pages and backend actions. There is no separately deployed frontend.
 
-## At a glance: what you will do
+## Before starting
 
-1. Create a Vultr VM and firewall rules.
-2. Point a domain name at the VM.
-3. Connect to the VM and install Docker.
-4. Copy the Wai Intelligence project ZIP to the VM.
-5. Copy the four complete CSV files to the VM.
-6. Set production passwords, domain and Gemini key.
-7. Start FastAPI, PostgreSQL and Caddy.
-8. Create real administrator and staff accounts.
-9. Open the HTTPS website and test it.
-10. Configure backups and learn how to deploy updates.
+You need:
 
-**Estimated operator effort:** allow 60–120 minutes for a first deployment, excluding DNS propagation and any account or domain setup delays. This is a planning estimate, not a guaranteed duration.
+- A Vultr account.
+- A computer with Terminal (macOS/Linux) or PowerShell (Windows).
+- An SSH key added to Vultr when you create the VM.
+- The four approved CSV source files, if you are ready to use the real datasets.
+- A Gemini API key only if you want the Gemini-powered functions enabled. It is optional.
 
-## Before you start
+The GitHub repository is public and contains sample data. **Do not commit real constituent or donor data to GitHub.** This guide stores the operational CSVs in `/opt/wai-data/source`, outside the application repository.
 
-Have these items ready:
+## 1. Create the Vultr VM
 
-- A Vultr account with billing enabled.
-- A domain name you control, for example `example.org`.
-- The application archive: `wai-intelligence-vultr-step-by-step.zip`.
-- The complete approved versions of these four CSV files:
-  - `constituent_profile_table.csv`
-  - `gift_transactions_table.csv`
-  - `CRM_interacions_table.csv` (the spelling is intentionally preserved from the supplied specification)
-  - `video_email_data_table.csv`
-- A Gemini API key if you want the Gemini-powered functions enabled. The rest of the app can be deployed without it, but AI-assisted functions will not have live Gemini access.
-- A computer with Terminal (macOS/Linux) or PowerShell (Windows). The `ssh` and `scp` commands are available in current macOS, Linux and Windows installations.
+In the [Vultr control panel](https://my.vultr.com/):
 
-**Important about the CSV files:** the ZIP contains only the sample rows previously supplied for the challenge. Copy the complete approved CSV files from your secure location in Step 8. Do not place real constituent data in a public Git repository or a public application archive.
+1. Open **Products → Compute** and choose **Deploy Instance**.
+2. Select **Cloud Compute**.
+3. Choose **Ubuntu 24.04 LTS, 64-bit**.
+4. For an initial small-team deployment, start with at least **2 vCPUs and 4 GB RAM**. This is a starting size, not a measured capacity guarantee.
+5. Select a region approved by your organization for data residency and operations.
+6. Add your SSH public key to the instance.
+7. Deploy the VM.
+8. Copy the instance's **public IPv4 address**. Call it `VULTR_PUBLIC_IP` in the commands below.
 
-## The deployment layout
+Use the VM's public IPv4 address. Do not create a DNS record or purchase a domain.
 
-```mermaid
-flowchart TB
-    Staff[Staff browser] --> DNS[Your domain DNS]
-    DNS -->|HTTPS :443 / HTTP :80| Caddy
-    subgraph VM[Vultr Cloud Compute VM — Ubuntu 24.04]
-      Caddy[Caddy — public entry point]
-      App[FastAPI — website and backend]
-      DB[(PostgreSQL 16)]
-      CSV[Host folder: data/source/*.csv<br/>mounted read-only]
-      Uploads[(Persistent grant-document volume)]
-      Caddy -->|private Docker network| App
-      App <--> DB
-      CSV --> App
-      App --> Uploads
-    end
-    App -. outbound HTTPS when configured .-> Gemini[Gemini API]
-```
+Vultr reference: [Cloud Compute](https://docs.vultr.com/products/compute/instances/cloud-compute).
 
-Only Caddy is exposed to the public internet. FastAPI and PostgreSQL communicate over a private Docker network. The CSV folder is mounted read-only; the app reads the source rows in place and does not import them into PostgreSQL.
+## 2. Set the Vultr firewall
 
----
+In **Products → Network → Firewall**, create a firewall group and attach it to the VM. Add these inbound rules:
 
-## Step 1 — Create the Vultr VM
+| Protocol | Port | Source |
+|---|---:|---|
+| TCP | 22 | Your current public IP only (use an IPv4 /32 rule) |
+| TCP | 80 | Any IPv4 address |
+| TCP | 443 | Any IPv4 address |
 
-Do these actions in the **Vultr control panel**.
+Port 80 is needed for Let's Encrypt's HTTP certificate validation. Port 443 serves the website over HTTPS.
 
-1. Sign in to [Vultr](https://my.vultr.com/).
-2. Open **Products → Compute** and choose **Deploy Instance** (the exact button label may vary slightly as the control panel changes).
-3. Select **Cloud Compute**. For a small-team pilot, choose a Shared CPU plan with at least **2 vCPUs and 4 GB RAM** as a starting point. Monitor resource use after launch and resize if needed.
-4. Choose a region approved by your organization for its data-residency and operational requirements.
-5. Under the operating system/image selection, choose **Ubuntu 24.04 LTS, 64-bit**.
-6. Under SSH keys, add your computer's public SSH key and select it for this instance. Prefer SSH-key access over password-only root access.
-   - If you do not already have an SSH key, create one on your computer with `ssh-keygen -t ed25519` and follow the prompts. Add the contents of the generated `.pub` file to Vultr.
-7. Give the instance a hostname such as `wai-intelligence`.
-8. Select the firewall group after you create it in Step 2, or return to attach it after the VM is created.
-9. Deploy the instance.
-10. When Vultr shows the instance as active, copy its **public IPv4 address**. In the commands below, replace `VM_PUBLIC_IP` with that address.
+Do not open ports 8000 or 5432. FastAPI and PostgreSQL are not intended to be directly accessible from the public internet. UDP 443 is not required for this setup.
 
-The 2-vCPU/4-GB recommendation is an initial sizing suggestion for a small pilot, not a measured capacity guarantee. If the app will process many large grant documents or several staff members will use it concurrently, monitor RAM, CPU and disk and resize accordingly.
+## 3. Connect to the VM
 
-Vultr reference: [Cloud Compute documentation](https://docs.vultr.com/products/compute/instances/cloud-compute).
-
-## Step 2 — Create and attach the Vultr firewall
-
-Do this in the **Vultr control panel**.
-
-1. Open **Products → Network → Firewall**.
-2. Create a firewall group named `wai-intelligence-firewall`.
-3. Add these **inbound** rules:
-
-| Protocol | Port | Source | Why it is needed |
-|---|---:|---|---|
-| TCP | 22 | Your current public IP only (for example `203.0.113.10/32`) | SSH administration |
-| TCP | 80 | Any IPv4 and IPv6 address | HTTP redirect and HTTPS certificate validation |
-| TCP | 443 | Any IPv4 and IPv6 address | Public HTTPS website |
-| UDP | 443 | Any IPv4 and IPv6 address | Optional HTTP/3 support |
-
-4. Save the rules.
-5. Open the firewall group's **Instances/Link** area and attach `wai-intelligence-firewall` to the `wai-intelligence` VM.
-6. Confirm that the VM shows the firewall group as attached.
-
-Do **not** create public inbound rules for TCP 8000 or TCP 5432. Those are the internal FastAPI and PostgreSQL ports. If your administrator IP changes, update the TCP 22 rule before the next SSH session.
-
-Vultr reference: [Create firewall rules by port and source IP](https://docs.vultr.com/products/network/firewall-groups/management/rules).
-
-## Step 3 — Point your domain to the VM
-
-Use the DNS provider that currently manages your domain. You do not have to move your domain's nameservers to Vultr just to create an A record.
-
-1. Sign in to the DNS provider for your domain.
-2. Create an **A record**:
-   - Type: `A`
-   - Host/Name: `wai` (for `wai.example.org`) or the hostname you selected
-   - Value/Points to: the VM's public IPv4 address
-   - TTL: leave the provider default
-3. Save the record.
-4. Wait for the record to resolve. On your **own computer**, run:
+Open Terminal or PowerShell on your computer:
 
 ```bash
-dig +short wai.example.org
+ssh root@VULTR_PUBLIC_IP
 ```
 
-Replace `wai.example.org` with your actual hostname. The command should return the VM's public IPv4 address. On Windows, `nslookup wai.example.org` can be used instead.
+Replace `VULTR_PUBLIC_IP` with the address shown in Vultr. Accept the SSH host fingerprint only after confirming that this is the VM you created.
 
-5. Do not continue to HTTPS setup until the hostname resolves to the VM's public address.
+The commands below run inside this SSH session as `root`.
 
-**If you specifically want Vultr to host your DNS zone:** add the domain under **Products → Network → DNS** in Vultr and follow the console instructions to change your registrar's nameservers to `ns1.vultr.com` and `ns2.vultr.com`. Do not change nameservers when you only intend to add an A record at your existing DNS provider.
+## 4. Install Git and Docker
 
-Vultr reference: [Add a domain to Vultr DNS](https://docs.vultr.com/products/network/dns/provisioning).
-
-## Step 4 — Connect to the VM
-
-On your **own computer**, open Terminal or PowerShell and run:
+Run inside the VM:
 
 ```bash
-ssh root@VM_PUBLIC_IP
-```
+apt-get update
+apt-get -y upgrade
+apt-get install -y ca-certificates curl git openssl
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+chmod a+r /etc/apt/keyrings/docker.asc
 
-Replace `VM_PUBLIC_IP` with the IP copied in Step 1. If you use a non-default SSH key, add `-i /path/to/private-key` to the command. Accept the host fingerprint only after confirming that you are connecting to the VM you just created.
-
-You are now working **inside the Vultr VM**. Commands in the next steps are run in this SSH session unless a heading says otherwise.
-
-## Step 5 — Update Ubuntu and create a deployment account
-
-Run inside the VM as `root`:
-
-```bash
-apt update
-apt -y upgrade
-apt install -y ca-certificates curl unzip openssl rsync
-```
-
-Create a non-root account for routine deployment work:
-
-```bash
-adduser wai-deploy
-usermod -aG sudo wai-deploy
-```
-
-The `adduser` command asks you to create a password. This password is used for `sudo`; keep it in your organization's password manager.
-
-Copy the SSH key you attached to the VM to the new account:
-
-```bash
-install -d -m 700 -o wai-deploy -g wai-deploy /home/wai-deploy/.ssh
-cp /root/.ssh/authorized_keys /home/wai-deploy/.ssh/authorized_keys
-chown wai-deploy:wai-deploy /home/wai-deploy/.ssh/authorized_keys
-chmod 600 /home/wai-deploy/.ssh/authorized_keys
-```
-
-Open a **second Terminal/PowerShell window on your own computer** and test the new account:
-
-```bash
-ssh wai-deploy@VM_PUBLIC_IP
-```
-
-Do not close the original root session until this new login works. From this point onward, use `wai-deploy` and `sudo` rather than logging in as root.
-
-## Step 6 — Install Docker Engine and Docker Compose
-
-Run these commands inside the VM while signed in as `wai-deploy`:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y ca-certificates curl
-sudo install -m 0755 -d /etc/apt/keyrings
-sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg \
-  -o /etc/apt/keyrings/docker.asc
-sudo chmod a+r /etc/apt/keyrings/docker.asc
-
-sudo tee /etc/apt/sources.list.d/docker.sources <<DOCKERREPO
+. /etc/os-release
+cat > /etc/apt/sources.list.d/docker.sources <<DOCKERREPO
 Types: deb
 URIs: https://download.docker.com/linux/ubuntu
-Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Suites: ${UBUNTU_CODENAME:-$VERSION_CODENAME}
 Components: stable
 Architectures: $(dpkg --print-architecture)
 Signed-By: /etc/apt/keyrings/docker.asc
 DOCKERREPO
 
-sudo apt-get update
-sudo apt-get install -y docker-ce docker-ce-cli containerd.io \
-  docker-buildx-plugin docker-compose-plugin
-sudo systemctl enable --now docker
+apt-get update
+apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+systemctl enable --now docker
+
+docker --version
+docker compose version
 ```
 
-Verify the installation:
-
-```bash
-sudo docker --version
-sudo docker compose version
-sudo docker run hello-world
-```
-
-The last command downloads and runs a small test container. It should finish with a “Hello from Docker!” message. Use `sudo` for Docker commands; adding a user to the Docker group grants powerful, effectively root-level access to the VM.
+These commands install Docker Engine and the Docker Compose plugin from Docker's official Ubuntu package repository.
 
 Official reference: [Install Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/).
 
-## Step 7 — Copy and unpack Wai Intelligence
+## 5. Download the application directly from GitHub
 
-This step has two parts: copy the ZIP from your computer, then unpack it on the VM.
-
-### 7A. On your own computer
-
-Find the downloaded `wai-intelligence-vultr-step-by-step.zip` file. In Terminal/PowerShell, change to the folder containing it, then run:
+Run inside the VM:
 
 ```bash
-scp ./wai-intelligence-vultr-step-by-step.zip wai-deploy@VM_PUBLIC_IP:/home/wai-deploy/
+mkdir -p /opt
+git clone --branch main https://github.com/edimaudo/wai.git /opt/wai
+cd /opt/wai
 ```
 
-Replace `VM_PUBLIC_IP`. If the ZIP is in Downloads, either `cd` into Downloads first or provide the full file path.
+This downloads the application source code from the `main` branch. You are not uploading a ZIP or manually transferring the application code.
 
-### 7B. Inside the VM
-
-Run:
-
-```bash
-sudo unzip -q /home/wai-deploy/wai-intelligence-vultr-step-by-step.zip -d /opt
-sudo chown -R wai-deploy:wai-deploy /opt/wai-intelligence
-cd /opt/wai-intelligence
-```
-
-Check that the project files are present:
+Confirm the expected files exist:
 
 ```bash
 ls -la
-ls -la app
-ls -la docs
 ```
 
-You should see `docker-compose.yml`, `Dockerfile`, `Caddyfile`, `.env.example`, the `app/` folder and the `docs/` folder. If the project folder is not `/opt/wai-intelligence`, stop and check the ZIP's folder structure before continuing.
+You should see `Dockerfile`, `docker-compose.yml`, `Caddyfile`, `.env.example`, `.dockerignore`, `app/` and `docs/`.
 
-## Step 8 — Put the four complete CSV files in the source folder
+## 6. Put the source CSV files outside the Git repository
 
-The application reads these four exact filenames from `/opt/wai-intelligence/data/source/`:
-
-```text
-constituent_profile_table.csv
-gift_transactions_table.csv
-CRM_interacions_table.csv
-video_email_data_table.csv
-```
-
-The files in the ZIP are examples only. This step copies your **complete approved files** to the VM.
-
-### 8A. Create a temporary transfer folder on the VM
-
-Inside the VM, run:
+Create a private data folder on the VM:
 
 ```bash
-mkdir -p /home/wai-deploy/wai-source
+mkdir -p /opt/wai-data/source
+chown -R 10001:10001 /opt/wai-data/source
+chmod 750 /opt/wai-data/source
 ```
 
-### 8B. Copy the four CSVs from your own computer
-
-On your **own computer**, run the following command, replacing `/path/to/your/csvs/` with the folder that contains your files:
+From a **second Terminal/PowerShell window on your own computer**, copy the approved CSV files to the VM. Replace the local folder and the VM IP:
 
 ```bash
-scp \
-  /path/to/your/csvs/constituent_profile_table.csv \
-  /path/to/your/csvs/gift_transactions_table.csv \
-  /path/to/your/csvs/CRM_interacions_table.csv \
-  /path/to/your/csvs/video_email_data_table.csv \
-  wai-deploy@VM_PUBLIC_IP:/home/wai-deploy/wai-source/
+scp /path/to/your/csvs/constituent_profile_table.csv \
+    /path/to/your/csvs/gift_transactions_table.csv \
+    /path/to/your/csvs/CRM_interacions_table.csv \
+    /path/to/your/csvs/video_email_data_table.csv \
+    root@VULTR_PUBLIC_IP:/opt/wai-data/source/
 ```
 
-If you do not have a complete file, do not invent or reconstruct missing records. You can deploy with the sample CSVs for a technical demonstration, but the dashboard will only reflect those sample rows.
-
-### 8C. Install the CSVs into the application source folder
-
-Back inside the **VM**, run:
+Back in the VM, set permissions:
 
 ```bash
-sudo install -d -o 10001 -g 10001 -m 750 /opt/wai-intelligence/data/source
-sudo cp /home/wai-deploy/wai-source/constituent_profile_table.csv /opt/wai-intelligence/data/source/
-sudo cp /home/wai-deploy/wai-source/gift_transactions_table.csv /opt/wai-intelligence/data/source/
-sudo cp /home/wai-deploy/wai-source/CRM_interacions_table.csv /opt/wai-intelligence/data/source/
-sudo cp /home/wai-deploy/wai-source/video_email_data_table.csv /opt/wai-intelligence/data/source/
-sudo chown -R 10001:10001 /opt/wai-intelligence/data/source
-sudo chmod 750 /opt/wai-intelligence/data/source
-sudo find /opt/wai-intelligence/data/source -maxdepth 1 -type f -name '*.csv' -exec chmod 640 {} \;
+chown -R 10001:10001 /opt/wai-data/source
+chmod 750 /opt/wai-data/source
+find /opt/wai-data/source -maxdepth 1 -type f -name '*.csv' -exec chmod 640 {} \;
+ls -lh /opt/wai-data/source
 ```
 
-Check the four files and their sizes:
+The expected filenames are:
+
+- `constituent_profile_table.csv`
+- `gift_transactions_table.csv`
+- `CRM_interacions_table.csv`
+- `video_email_data_table.csv`
+
+If the approved CSVs are not ready and you want to test the sample rows, copy the repository samples into the external data folder on the VM:
 
 ```bash
-sudo ls -lh /opt/wai-intelligence/data/source/
+cp /opt/wai/data/source/*.csv /opt/wai-data/source/
+chown -R 10001:10001 /opt/wai-data/source
+chmod 750 /opt/wai-data/source
+find /opt/wai-data/source -maxdepth 1 -type f -name '*.csv' -exec chmod 640 {} \;
 ```
 
-The Compose configuration mounts this host folder into the FastAPI container as `/app/data/source:ro`. The `:ro` suffix means read-only. The application reads the CSVs and matches IDs in memory; it does not write those source rows to PostgreSQL.
+Do not upload incomplete or reconstructed records and do not put real donor data in GitHub.
 
-## Step 9 — Create the production environment file
+Docker Compose mounts `/opt/wai-data/source` into the application container as read-only. The source rows are read from those files; they are not imported into PostgreSQL.
+
+## 7. Configure the production environment
 
 Inside the VM:
 
 ```bash
-cd /opt/wai-intelligence
+cd /opt/wai
 cp .env.example .env
 openssl rand -hex 32
 openssl rand -hex 24
 ```
 
-The first random value is your application session secret. The second is the PostgreSQL password. Copy both values into a password manager before editing the file.
+The first output is your application session secret. The second is your PostgreSQL password. Use the generated values; do not use the example values.
 
 Open the environment file:
 
@@ -338,260 +192,189 @@ Open the environment file:
 nano .env
 ```
 
-Change the following values. Use your real hostname and the random values you generated:
+Set these values, replacing the examples with the actual values:
 
 ```dotenv
 ENVIRONMENT=production
-SECRET_KEY=PASTE_THE_FIRST_RANDOM_VALUE_HERE
-POSTGRES_PASSWORD=PASTE_THE_SECOND_RANDOM_VALUE_HERE
-DOMAIN=wai.example.org
-GOOGLE_API_KEY=PASTE_YOUR_GEMINI_KEY_HERE
-GEMINI_MODEL=gemini-3.5-flash
+SECRET_KEY=PASTE_FIRST_RANDOM_VALUE
+POSTGRES_PASSWORD=PASTE_SECOND_RANDOM_VALUE
+SERVER_IP=VULTR_PUBLIC_IP
+WAI_HOST_DATA_DIR=/opt/wai-data/source
 SESSION_HTTPS_ONLY=true
 DEMO_SEED_USERS=false
 DEMO_SEED_DATA=false
+GOOGLE_API_KEY=
+GEMINI_MODEL=gemini-3.5-flash
 ```
 
-Replace `wai.example.org` with the exact hostname from Step 3. `DOMAIN` must be only the hostname: do not include `https://` or a trailing slash.
+- Set `SERVER_IP` to the exact public IPv4 address shown in the Vultr control panel. Do not add `https://`, a port or a trailing slash.
+- Keep `WAI_HOST_DATA_DIR=/opt/wai-data/source`. This keeps production CSVs outside the Git checkout.
+- Add your Gemini API key to `GOOGLE_API_KEY` only if you have one. It is optional.
+- Leave the other values from `.env.example` unchanged unless you have a specific reason to change them. Docker Compose sets the internal PostgreSQL connection string for the application.
 
-If you do not yet have a Gemini API key, leave `GOOGLE_API_KEY=` blank. The site can still start, but live Gemini-powered functions will not be available.
-
-Keep the other `.env.example` settings unchanged unless you have a specific reason to change them. Docker Compose overrides `DATABASE_URL` inside the application container so that FastAPI connects to the private Compose service named `db` using the PostgreSQL password you just set.
-
-Save in nano with **Ctrl+O**, press **Enter**, then exit with **Ctrl+X**. Restrict access to the file:
+Save the file, then restrict access:
 
 ```bash
 chmod 600 .env
 ```
 
-### Why both demo switches are false
+The two demo switches must be false in production. This prevents the application from creating demonstration users and fictional workflow records in the new production database. It does not delete existing database records.
 
-- `DEMO_SEED_USERS=false` prevents creation of the demonstration `admin` and `fundraiser` login accounts.
-- `DEMO_SEED_DATA=false` prevents the application from creating fictional demonstration opportunities, donor profiles, reporting metrics, due-diligence examples and grant records in a new database.
+## 8. Validate the configuration and start Wai
 
-The application still initializes its standard source definitions and default prospecting criteria. You will create real login accounts in Step 12. If you are reusing a database that was previously started with demo data, changing these switches does not delete old rows; use a new clean database or arrange a reviewed data-cleanup before operational use.
-
-## Step 10 — Check the configuration and start the application
-
-Run inside the VM from `/opt/wai-intelligence`:
-
-First validate the Compose file and environment substitutions:
+Run inside `/opt/wai`:
 
 ```bash
-sudo docker compose config --quiet
+docker compose config --quiet
+docker compose pull db caddy
+docker compose run --rm --no-deps caddy caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+docker compose up -d --build
+docker compose ps
 ```
 
-If this command prints an error, stop and correct the indicated `.env` or Compose problem before starting services.
+If `docker compose config --quiet` reports a missing variable or configuration error, correct `.env` before starting the services. The Caddy validation command must also report that the configuration is valid; fix any Caddyfile error before continuing.
 
-Download the database and Caddy images:
+You should see three services:
+
+- `app`: FastAPI website and backend.
+- `db`: PostgreSQL 16 database.
+- `caddy`: public HTTPS entry point.
+
+Check the startup logs:
 
 ```bash
-sudo docker compose pull db caddy
+docker compose logs --tail=100 db app caddy
 ```
 
-Build the FastAPI image and start all services:
+The first start builds the FastAPI application image and creates the PostgreSQL database. Caddy then requests a public TLS certificate for the server IP. Certificate issuance happens automatically and may take a short time.
+
+## 9. Open the website
+
+Wait for Caddy's logs to show that the certificate was obtained successfully:
 
 ```bash
-sudo docker compose up -d --build
+docker compose logs caddy
 ```
 
-Check that all three services are running:
+Then, in your browser, open:
 
-```bash
-sudo docker compose ps
+```text
+https://VULTR_PUBLIC_IP
 ```
 
-You should see these services:
+Use the exact IPv4 address from Vultr. The website should load with a valid HTTPS connection.
 
-- `db` — PostgreSQL 16.
-- `app` — FastAPI website and backend.
-- `caddy` — public web server and HTTPS reverse proxy.
-
-Inspect startup logs:
+You can also check the health endpoint from your own computer:
 
 ```bash
-sudo docker compose logs --tail=100 db
-sudo docker compose logs --tail=100 app
-sudo docker compose logs --tail=100 caddy
+curl -fsS https://VULTR_PUBLIC_IP/healthz
 ```
 
-Wait for PostgreSQL to report that it is ready, FastAPI to finish starting, and Caddy to obtain the certificate. The app and database are not directly exposed to the internet. Caddy publishes ports 80 and 443.
+Expected response:
 
-## Step 11 — Check that the website is responding
-
-On your **own computer**, run:
-
-```bash
-curl -i https://wai.example.org/healthz
+```text
+ok
 ```
 
-Replace the example hostname. The response should have HTTP status `200` and the body `ok`.
+If a certificate is not issued, check that the IP in `.env` exactly matches the VM's public IPv4 address, that inbound TCP ports 80 and 443 are allowed, and that Caddy is running. See Troubleshooting below.
 
-You can also open `https://wai.example.org` in your browser. The browser should show the Wai Intelligence landing page with a valid HTTPS connection. If it does not, use the troubleshooting table near the end of this guide before continuing.
+## 10. Create the first administrator account
 
-## Step 12 — Create the real administrator and staff accounts
-
-The production settings disable demo login accounts, so create the accounts explicitly.
-
-Inside the VM, run the first command:
+Inside the VM:
 
 ```bash
-cd /opt/wai-intelligence
-sudo docker compose exec app python -m app.scripts.create_user \
+cd /opt/wai
+docker compose exec app python -m app.scripts.create_user \
   --username wai-admin --role admin --display-name "Wai Administrator"
 ```
 
-The command asks you to enter and confirm a password. Use a unique password of at least 14 characters and save it in your password manager.
+Enter and confirm a unique password of at least 14 characters when prompted.
 
-Create the staff account:
+Create a staff account in the same way:
 
 ```bash
-sudo docker compose exec app python -m app.scripts.create_user \
+docker compose exec app python -m app.scripts.create_user \
   --username fundraising-lead --role user --display-name "Fundraising Lead"
 ```
 
-Enter a different unique password. Create additional staff accounts through the application's administrator dashboard after the first administrator has signed in.
+Do not use the demonstration credentials from local development.
 
-## Step 13 — Complete the browser acceptance checks
+## 11. Check the application
 
-Open `https://wai.example.org` and test the application in a browser.
+Open `https://VULTR_PUBLIC_IP` and verify:
 
-| Check | What to do | Expected result |
-|---|---|---|
-| Landing page | Open the public domain | Landing page loads over HTTPS |
-| Authentication | Open `/app` in a private/incognito window | Browser is redirected to sign-in |
-| Administrator | Sign in with the account from Step 12 | Admin dashboard is available |
-| Staff access | Sign in as `fundraising-lead` | Normal workspace opens; admin functions are denied |
-| Language | Switch to Canadian French, then move between pages | Interface remains in French |
-| Source files | Open Donor Stewardship → Constituent Source Data | Four CSV files are detected and displayed as read-only source data |
-| Exports | Open Data Exports and download a CSV | Authenticated CSV download succeeds |
-| Five workflows | Open prospecting, reporting, stewardship, due diligence and grant compliance | Each page loads and can be navigated |
-| Gemini | Use a Gemini-enabled function if the key is configured | Request runs; if no key is set, the UI indicates that live Gemini is not configured |
+| Area | Check |
+|---|---|
+| Website | Landing page loads over HTTPS without a certificate warning |
+| Login | Sign in with the administrator account |
+| Access | Administrator dashboard opens; staff account has normal user access |
+| Language | Switch between Canadian English and Canadian French; navigate between pages |
+| Source data | Constituent Source Data detects the CSV files in the mounted folder |
+| Exports | Authenticated CSV downloads work |
+| Workflows | Funding prospecting, reporting, donor stewardship, due diligence and grant compliance pages open |
+| Health | `https://VULTR_PUBLIC_IP/healthz` returns `ok` |
 
-The source datasets currently present in the ZIP are sample rows. The number of rows shown in the app depends on the complete CSVs you copied in Step 8.
+These are deployment acceptance checks. They do not replace functional testing of every workflow or a formal accessibility audit.
 
-## Step 14 — Back up the database and files
+## 12. Deploy future GitHub updates
 
-Backups must be stored somewhere other than the VM. A backup kept only on the same VM can be lost with the VM or its disk.
-
-On the VM, create a restricted local backup folder:
+The application code lives in GitHub. When you are ready to deploy a new version:
 
 ```bash
-cd /opt/wai-intelligence
-mkdir -p backups
-chmod 700 backups
+cd /opt/wai
+git pull --ff-only origin main
+docker compose pull db caddy
+docker compose up -d --build
+docker compose ps
 ```
 
-Create a PostgreSQL logical backup:
+That is the normal update process: push changes to GitHub, then pull them onto the VM and rebuild the application.
+
+The production `.env` file, PostgreSQL volume, uploaded documents volume and `/opt/wai-data/source` folder are separate from the Git checkout. Do not delete them when updating the code.
+
+This is a manual Git pull deployment. The repository does not currently configure an automatic GitHub Actions deployment to Vultr.
+
+## 13. Back up production data
+
+Before using real constituent or grant information, set up an encrypted backup location outside the Vultr VM and agree on backup frequency and retention.
+
+A PostgreSQL backup can be created on the VM with:
 
 ```bash
-sudo docker compose exec -T db pg_dump -U wai_app -d wai_intelligence \
-  > "backups/postgres-$(date +%F-%H%M).sql"
+mkdir -p /opt/wai-backups
+chmod 700 /opt/wai-backups
+cd /opt/wai
+docker compose exec -T db pg_dump -U wai_app -d wai_intelligence \
+  > "/opt/wai-backups/postgres-$(date +%F-%H%M).sql"
 ```
 
-Back up the uploaded grant documents volume:
+Copy the backup to your organization's approved encrypted storage. Back up the source CSV files and uploaded grant documents separately. Keep the `.env` file in an approved secrets/password manager; it contains production secrets.
 
-```bash
-sudo docker compose exec -T app python -c \
-  'import tarfile,sys; t=tarfile.open(fileobj=sys.stdout.buffer, mode="w|gz"); t.add("/app/data/uploads", arcname="uploads"); t.close()' \
-  > "backups/uploads-$(date +%F-%H%M).tar.gz"
-```
-
-Back up the source CSVs and environment file:
-
-```bash
-sudo tar -czf - data/source > "backups/source-$(date +%F-%H%M).tar.gz"
-cp .env "backups/env-$(date +%F-%H%M).txt"
-chmod 600 backups/*
-```
-
-Copy the `backups/` folder to your organization's approved encrypted off-VM backup location. Treat the environment backup as a secret because it contains database credentials and the session secret. Test restoring a database backup to a separate staging instance; a backup that has never been restored is not a verified recovery plan.
-
-Back up regularly. At minimum, agree on a daily database backup schedule, retention period, off-site storage location and restore owner before using real constituent information.
-
-## Step 15 — Update the application later
-
-Do not overwrite the production source CSVs, `.env`, uploaded documents or database when installing a new application release.
-
-1. Make and verify the backups from Step 14.
-2. Copy the new application ZIP from your own computer to `/home/wai-deploy/` using `scp`, as in Step 7.
-3. On the VM, unpack the new release into a temporary directory:
-
-```bash
-sudo rm -rf /tmp/wai-release
-sudo mkdir -p /tmp/wai-release
-sudo unzip -q /home/wai-deploy/NEW_APPLICATION_ZIP.zip -d /tmp/wai-release
-```
-
-4. Synchronize the code while explicitly preserving production files:
-
-```bash
-sudo rsync -a --delete \
-  --exclude='.env' \
-  --exclude='data/source/' \
-  --exclude='data/uploads/' \
-  --exclude='backups/' \
-  /tmp/wai-release/wai-intelligence/ /opt/wai-intelligence/
-```
-
-5. Rebuild and restart:
-
-```bash
-cd /opt/wai-intelligence
-sudo docker compose config --quiet
-sudo docker compose up -d --build
-sudo docker compose ps
-sudo docker compose logs --tail=100 app caddy db
-```
-
-6. Repeat the checks in Step 13.
-
-The application currently creates missing database tables at startup; this is not a complete schema migration system. For a future release that changes existing database columns or constraints, require a reviewed database migration and a tested backup/restore before applying it to production.
+**Do not run `docker compose down -v` as a routine restart or update command.** The `-v` option deletes the persistent database, uploaded-document and Caddy certificate volumes.
 
 ## Troubleshooting
 
-| Problem | Check and action |
+| Problem | What to check |
 |---|---|
-| SSH connection times out | Confirm the VM is active, use the correct IPv4 address, confirm your current IP is allowed on firewall TCP 22, and verify the correct SSH key is loaded. |
-| Domain does not resolve | Check the A record at your DNS provider. It must point to the VM IPv4 address. Do not continue until `dig +short your-hostname` returns the correct IP. |
-| Caddy cannot get an HTTPS certificate | Confirm the domain resolves to this VM, ports 80 and 443 are allowed by the Vultr firewall, and `DOMAIN` in `.env` exactly matches the hostname. Check `sudo docker compose logs caddy`. |
-| `docker compose config` says a variable is missing | Reopen `.env`; check `POSTGRES_PASSWORD` and `DOMAIN` are set and not surrounded by `< >` placeholder characters. |
-| FastAPI exits during startup | Check `sudo docker compose logs app`. Production requires `ENVIRONMENT=production`, a unique `SECRET_KEY`, `DEMO_SEED_USERS=false` and `DEMO_SEED_DATA=false`. |
-| FastAPI cannot connect to PostgreSQL | Check `sudo docker compose ps db`, `sudo docker compose logs db`, and the value of `POSTGRES_PASSWORD` in `.env`. Re-run `sudo docker compose config --quiet`. |
-| A source CSV is missing | Check its exact filename under `/opt/wai-intelligence/data/source/`, then check directory/file permissions and the Compose read-only volume mount. |
-| Browser shows 502 Bad Gateway | Caddy is running but cannot reach FastAPI. Check `sudo docker compose ps` and `sudo docker compose logs app caddy`. |
-| Sign-in does not persist | Confirm `SESSION_HTTPS_ONLY=true`, the browser is using the HTTPS domain, and `SECRET_KEY` is stable across restarts. |
-| Application update removed data | Stop further changes. Restore `.env`, source files, uploads and PostgreSQL from the verified backups. This is why Step 15 excludes persistent directories. |
+| SSH times out | Confirm the VM is active, the IP is correct and TCP 22 allows your current public IP. |
+| Website does not open | Confirm the firewall allows inbound TCP 80 and 443, then run `docker compose ps`. |
+| Caddy cannot obtain the IP certificate | Confirm `SERVER_IP` exactly matches the VM's public IPv4 address; port 80 must be reachable from the internet. Inspect `docker compose logs caddy`. |
+| Browser reports a certificate error | Wait for Caddy to complete certificate issuance. Do not bypass the warning for normal staff use. Check Caddy logs and firewall rules. |
+| FastAPI is restarting | Run `docker compose logs --tail=200 app`. Production requires a unique `SECRET_KEY`, PostgreSQL, and both demo switches set to false. |
+| Database is not ready | Run `docker compose ps db` and `docker compose logs db`. Check `POSTGRES_PASSWORD` in `.env`. |
+| CSV files are not detected | Check the exact filenames, `WAI_HOST_DATA_DIR` and permissions on `/opt/wai-data/source`. |
+| 502 Bad Gateway | Caddy is running but cannot reach FastAPI. Check `docker compose ps` and `docker compose logs app caddy`. |
+| A Git pull conflicts with data | Production CSV files must be stored in `/opt/wai-data/source`, not in the repository's `data/source` folder. |
 
-## Official references
+## Why an IP address works without a domain
 
-Use these official references if Vultr or Docker changes the control-panel labels or installation screens:
+Let's Encrypt now issues short-lived certificates for public IP addresses. These certificates are valid for 160 hours and must use the `shortlived` ACME profile. The Caddy configuration in this repository requests that profile and disables the TLS-ALPN challenge so validation uses HTTP on port 80. Caddy stores certificate state in the persistent `caddy_data` volume and renews certificates automatically.
 
+This is why the deployment needs the VM's public IPv4 address and open TCP ports 80 and 443, but does not need a domain or DNS provider. If the VM's public IP changes, update `SERVER_IP` in `.env` and recreate the Caddy service.
+
+References:
+
+- [Let's Encrypt: IP address and six-day certificates](https://letsencrypt.org/2026/01/15/6day-and-ip-general-availability)
+- [Caddy releases](https://github.com/caddyserver/caddy/releases)
 - [Vultr Cloud Compute](https://docs.vultr.com/products/compute/instances/cloud-compute)
-- [Vultr firewall rules](https://docs.vultr.com/products/network/firewall-groups/management/rules)
-- [Vultr DNS provisioning](https://docs.vultr.com/products/network/dns/provisioning)
 - [Docker Engine installation on Ubuntu](https://docs.docker.com/engine/install/ubuntu/)
-- [Caddy HTTPS quick-start](https://caddyserver.com/docs/quick-starts/https)
-
----
-
-## Deployment completion record
-
-Do not mark deployment complete until the operator has filled in and checked this record:
-
-| Item | Record |
-|---|---|
-| Vultr instance name | ______________________________ |
-| VM public IPv4 | ______________________________ |
-| Ubuntu version | Ubuntu 24.04 LTS / other: __________ |
-| Domain | ______________________________ |
-| DNS A record verified | Yes / No |
-| Vultr firewall attached | Yes / No |
-| Docker Compose services healthy | Yes / No |
-| PostgreSQL backup created and copied off VM | Yes / No |
-| Four complete CSV files present | Yes / No |
-| Administrator account created | Yes / No |
-| Staff account created | Yes / No |
-| HTTPS browser check passed | Yes / No |
-| Five workflow checks passed | Yes / No |
-| Deployment date and operator | ______________________________ |

@@ -30,20 +30,19 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - ./data/source:/app/data/source:ro
+      - ${WAI_HOST_DATA_DIR:-./data/source}:/app/data/source:ro
       - wai_uploads:/app/data/uploads
     expose: ["8000"]
     networks: [private]
 
   caddy:
-    image: caddy:2-alpine
+    image: caddy:2.11.7-alpine
     restart: unless-stopped
     environment:
-      DOMAIN: ${DOMAIN:?Set DOMAIN in .env}
+      SERVER_IP: ${SERVER_IP:?Set SERVER_IP to the Vultr public IPv4 address in .env}
     ports:
       - "80:80"
       - "443:443"
-      - "443:443/udp"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data

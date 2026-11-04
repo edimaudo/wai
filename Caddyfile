@@ -1,4 +1,11 @@
-{$DOMAIN} {
+{$SERVER_IP} {
+    tls {
+        issuer acme {
+            profile shortlived
+            disable_tlsalpn_challenge
+        }
+    }
+
     encode gzip zstd
     header {
         X-Content-Type-Options nosniff
