@@ -254,7 +254,7 @@ code { padding: .12rem .35rem; border-radius: .3rem; background: var(--surface-s
 .landing-pillars { padding: 2.7rem 0 3.2rem; border-top: 1px solid var(--border); }
 .section-heading { margin-bottom: 1.3rem; }
 .section-heading h2 { font-size: 1.8rem; }
-.pillar-grid { display: grid; grid-template-columns: repeat(5, minmax(12rem, 1fr)); gap: .8rem; overflow-x: auto; padding-bottom: .4rem; scroll-snap-type: x proximity; }
+.pillar-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .8rem; overflow: visible; padding-bottom: 0; }
 .pillar-card { min-width: 0; min-height: 9.5rem; padding: 1rem 1.1rem; border: 1px solid var(--border); border-radius: .55rem; background: var(--surface); scroll-snap-align: start; }
 .pillar-card h3 { margin: .65rem 0 .4rem; }
 .pillar-card p { margin-bottom: 0; color: var(--muted); font-size: .77rem; }
@@ -273,6 +273,7 @@ code { padding: .12rem .35rem; border-radius: .3rem; background: var(--surface-s
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; }
 
 @media (max-width: 1100px) {
+  .pillar-grid { grid-template-columns: repeat(5, minmax(12rem, 1fr)); overflow-x: auto; padding-bottom: .4rem; scroll-snap-type: x proximity; }
   .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .module-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-bottom-grid { grid-template-columns: 1fr; }
