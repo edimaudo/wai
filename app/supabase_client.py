@@ -21,14 +21,16 @@ def get_service_client() -> Any:
     _require_database_config()
     try:
         from supabase import create_client
-        from supabase.lib.client_options import ClientOptions
     except ImportError as exc:
         raise RuntimeError("The Supabase Python package is not installed.") from exc
-    return create_client(
-        settings.supabase_url,
-        settings.supabase_service_role_key,
-        options=ClientOptions(auto_refresh_token=False, persist_session=False),
-    )
+
+    # Do not pass ClientOptions here. The previous implementation imported the
+    # abstract base class from supabase.lib.client_options; current supabase-py
+    # expects its synchronous options type and can fail during client creation
+    # with: AttributeError: 'ClientOptions' object has no attribute 'storage'.
+    # No custom client options are required for this server-side, service-role
+    # connection, so use the SDK defaults.
+    return create_client(settings.supabase_url, settings.supabase_service_role_key)
 
 
 def clear_supabase_clients() -> None:

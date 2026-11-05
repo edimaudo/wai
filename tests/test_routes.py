@@ -74,8 +74,8 @@ def client(monkeypatch):
 
 def test_core_pages_render_with_empty_database(client):
     paths = [
-        "/", "/app", "/app/funding", "/app/reporting", "/app/donors",
-        "/app/partnerships", "/app/grants", "/app/tasks", "/app/evidence",
+        "/", "/app/funding", "/app/reporting", "/app/donors",
+        "/app/partnerships", "/app/grants", "/app/organization", "/app/tasks", "/app/evidence",
         "/app/reviews", "/app/network", "/app/admin/data", "/ready", "/health",
     ]
     for path in paths:
@@ -143,41 +143,33 @@ def test_landing_page_uses_requested_carbon_content_without_removed_sections():
     assert "landing-flow" not in html
     assert "shared decision process" not in html
     assert "make the next decision with a clearer view of the evidence" not in html
-    assert "five workflows for funding research" in html
+    assert "five workflows for funding research" not in html
+    assert "a practical intelligence workspace for wateraid canada" not in html
+    assert "explore workflow" not in html
+    assert "explorer le flux" not in html
+    assert 'href="/app/funding">explore workflow' not in html
 
 
-def test_dashboard_stays_available_and_explains_missing_supabase(monkeypatch):
-    from app.supabase_client import SupabaseNotConfigured
+def test_app_entry_redirects_to_first_operational_workflow(client):
+    response = client.get("/app", follow_redirects=False)
+    assert response.status_code == 303
+    assert response.headers["location"] == "/app/funding"
 
-    def missing_database():
-        raise SupabaseNotConfigured("Supabase is not configured")
 
-    monkeypatch.setattr(web, "get_service_client", missing_database)
-    monkeypatch.setattr(workflows, "get_service_client", missing_database)
-    response = TestClient(app, raise_server_exceptions=False).get("/app")
+def test_portfolio_overview_is_removed_and_organization_context_is_preserved(client):
+    response = client.get("/app/organization")
     assert response.status_code == 200
-    assert "The workspace is online" in response.text
-    assert "SUPABASE_URL" in response.text
-    assert "sql/schema.sql" in response.text
-    assert "Service temporarily unavailable" not in response.text
+    assert "Save organizational context" in response.text
+    assert "Portfolio overview" not in response.text
+    assert "Organization context" in response.text
 
 
 def test_cross_workflow_navigation_uses_portfolio_tools_label(client):
-    response = client.get("/app")
+    response = client.get("/app/funding")
     assert response.status_code == 200
     assert "PORTFOLIO TOOLS" in response.text
     assert "SHARED RECORDS" not in response.text
+    assert "Portfolio overview" not in response.text
     tasks = client.get("/app/tasks")
     assert "Portfolio tools" in tasks.text
 
-
-def test_dashboard_does_not_return_500_when_supabase_read_fails(monkeypatch):
-    def database_failure():
-        raise RuntimeError("simulated Supabase connection failure")
-
-    monkeypatch.setattr(web, "get_service_client", database_failure)
-    monkeypatch.setattr(workflows, "get_service_client", database_failure)
-    response = TestClient(app, raise_server_exceptions=False).get("/app")
-    assert response.status_code == 200
-    assert "Supabase could not return the workspace data" in response.text
-    assert "No placeholder metrics are shown" in response.text

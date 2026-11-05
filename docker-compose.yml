@@ -10,8 +10,7 @@ services:
     expose:
       - "8000"
     volumes:
-      - ./data/source:/app/data/source:ro
-      - ./data/dictionaries:/app/data/dictionaries:ro
+      - ./data:/app/data:ro
       - wai_uploads:/app/data/uploads
     networks:
       - wai-private

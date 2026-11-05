@@ -14,7 +14,7 @@ from app.security import csrf_is_valid, new_csrf_token
 from app.services.csv_ingestion import import_recognized_files, scan_data_folder
 from app.services.modules import MODULES
 from app.services import workflows as wf
-from app.supabase_client import SupabaseNotConfigured, get_service_client
+from app.supabase_client import get_service_client
 from app.templates import templates
 
 router = APIRouter()
@@ -89,38 +89,16 @@ async def ready():
         raise HTTPException(status_code=503, detail="Supabase is not ready.") from exc
 
 
-@router.get("/app", response_class=HTMLResponse, name="dashboard")
-async def dashboard(request: Request):
-    try:
-        strategy = wf.get_strategy_context()
-        analytics = wf.reporting_analytics()
-        approvals = wf.approval_workspace()
-        tasks = wf.task_workspace()
-        pending = [x for x in approvals if x.get("status") == "pending"]
-        open_tasks = [x for x in tasks if x.get("status") in {"open", "in_progress"}]
-        imports = wf.all_rows("data_imports", order="created_at", desc=True)[:8]
-        return render(request, "dashboard/index.html", context={
-            "strategy": strategy, "analytics": analytics, "pending_reviews": len(pending),
-            "open_tasks": len(open_tasks), "recent_imports": imports,
-            "data_counts": {"gifts": analytics["gift_count"], "interactions": analytics["crm_interactions"],
-                            "video_events": analytics["quality"]["video_email_records"]},
-            "connection_issue": None, "modules": MODULES,
-        })
-    except SupabaseNotConfigured:
-        log.warning("Portfolio overview opened while Supabase is not configured")
-        connection_issue = (
-            "Supabase is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to the server environment, "
-            "run sql/schema.sql in the Supabase SQL Editor, then restart the application."
-        )
-    except Exception:
-        log.exception("Portfolio overview could not load Supabase workspace data")
-        connection_issue = (
-            "The application is running, but Supabase could not return the workspace data. Confirm the project URL "
-            "and server-side service-role key, verify that sql/schema.sql has been applied, and check the application "
-            "logs for the underlying database error. No placeholder metrics are shown."
-        )
-    return render(request, "dashboard/index.html", status_code=200, context={
-        "connection_issue": connection_issue, "modules": MODULES,
+@router.get("/app", include_in_schema=False, name="app_entry")
+async def app_entry():
+    """Open the first operational workflow; there is no portfolio overview page."""
+    return RedirectResponse("/app/funding", status_code=303)
+
+
+@router.get("/app/organization", response_class=HTMLResponse, name="organization_context")
+async def organization_context_page(request: Request):
+    return render(request, "organization/index.html", context={
+        "strategy": wf.get_strategy_context(),
     })
 
 
@@ -131,7 +109,7 @@ async def strategy_save(request: Request, csrf_token: str = Form(...), mission: 
                         strategic_priorities: str = Form(""), values_statement: str = Form("")):
     _check_csrf(request, csrf_token)
     wf.save_strategy_context(locals())
-    return _redirect("/app")
+    return _redirect("/app/organization")
 
 
 @router.post("/app/strategy/refine", name="strategy_refine")
@@ -139,11 +117,8 @@ async def strategy_refine(request: Request, csrf_token: str = Form(...)):
     _check_csrf(request, csrf_token)
     context = wf.get_strategy_context()
     refined = wf.refine_strategy_context(context, _lang(request))
-    return render(request, "dashboard/index.html", context={
-        "strategy": wf.get_strategy_context(), "analytics": wf.reporting_analytics(),
-        "pending_reviews": len([x for x in wf.approval_workspace() if x.get("status") == "pending"]),
-        "open_tasks": len([x for x in wf.task_workspace() if x.get("status") in {"open", "in_progress"}]),
-        "recent_imports": [], "data_counts": {}, "refined_strategy": refined,
+    return render(request, "organization/index.html", context={
+        "strategy": wf.get_strategy_context(), "refined_strategy": refined,
     })
 
 

@@ -32,9 +32,8 @@
 {% else %}
   <div class="app-shell">
     <aside class="sidebar" aria-label="{{ t('nav_main') }}">
-      <a class="brand" href="/app" aria-label="Wai Intelligence overview"><span class="brand-copy"><strong>wai intelligence</strong></span></a>
+      <a class="brand" href="/app/funding" aria-label="Wai Intelligence"><span class="brand-copy"><strong>wai intelligence</strong></span></a>
       <nav class="primary-nav">
-        <a class="nav-link {% if request.url.path == '/app' %}is-active{% endif %}" href="/app" data-short="O">{{ t('dashboard') }}</a>
         <div class="nav-label">{{ t('core_workflows') }}</div>
         <a class="nav-link {% if request.url.path.startswith('/app/funding') %}is-active{% endif %}" href="/app/funding" data-short="F">{{ t('funding') }}</a>
         <a class="nav-link {% if request.url.path.startswith('/app/reporting') %}is-active{% endif %}" href="/app/reporting" data-short="R">{{ t('reporting') }}</a>
@@ -42,6 +41,7 @@
         <a class="nav-link {% if request.url.path.startswith('/app/partnerships') %}is-active{% endif %}" href="/app/partnerships" data-short="P">{{ t('partnerships') }}</a>
         <a class="nav-link {% if request.url.path.startswith('/app/grants') %}is-active{% endif %}" href="/app/grants" data-short="G">{{ t('grants') }}</a>
         <div class="nav-label">{{ t('portfolio_tools') }}</div>
+        <a class="nav-link {% if request.url.path.startswith('/app/organization') %}is-active{% endif %}" href="/app/organization" data-short="O">{{ t('organization_context') }}</a>
         <a class="nav-link {% if request.url.path.startswith('/app/reviews') %}is-active{% endif %}" href="/app/reviews" data-short="V">{{ 'Human review' if language == 'en-CA' else 'Révision humaine' }}</a>
         <a class="nav-link {% if request.url.path.startswith('/app/tasks') %}is-active{% endif %}" href="/app/tasks" data-short="T">{{ 'Follow-up tasks' if language == 'en-CA' else 'Tâches de suivi' }}</a>
         <a class="nav-link {% if request.url.path.startswith('/app/evidence') %}is-active{% endif %}" href="/app/evidence" data-short="E">{{ 'Evidence register' if language == 'en-CA' else 'Registre des preuves' }}</a>

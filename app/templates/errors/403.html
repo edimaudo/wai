@@ -1,3 +1,3 @@
 {% extends "base.html" %}
 {% block title %}{{ t("request_error") }} | {{ app_name }}{% endblock %}
-{% block content %}<section class="error-page"><div class="error-code">{{ error_code or 403 }}</div><h1>{{ t("request_error") }}</h1><p>{{ error_message or t('request_failed') }}</p><a class="button button-primary" href="/app">{{ t('return_dashboard') }}</a></section>{% endblock %}
+{% block content %}<section class="error-page"><div class="error-code">{{ error_code or 403 }}</div><h1>{{ t("request_error") }}</h1><p>{{ error_message or t('request_failed') }}</p><a class="button button-primary" href="/app/funding">{{ t('return_dashboard') }}</a></section>{% endblock %}
