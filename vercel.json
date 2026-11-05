@@ -1,8 +1,25 @@
+
 {
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-  "functions": {
-    "app/main.py": {
-      "includeFiles": ["app/**/*", "data/source/**/*.csv"]
+  "version": 2,
+  "builds": [
+    {
+      "src": "app/main.py",
+      "use": "@vercel/python",
+      "config": { 
+        "maxDuration": 300, 
+        "memory": 1024,
+        "includeFiles": "data/**"
+      }
     }
-  }
+  ],
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "app/main.py"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "app/main.py"
+    }
+  ]
 }
