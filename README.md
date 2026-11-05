@@ -1,18 +1,6 @@
 # Wai Intelligence
 
-Wai Intelligence is a server-rendered FastAPI decision-support workspace for WaterAid Canada. It brings five related workflows into one authenticated application: funding prospecting, reporting intelligence, donor stewardship, ethical partnership due diligence, and proposal/grant compliance.
-
-## Deployment
-
-- **[Vultr VM deployment guide](docs/VULTR_DEPLOYMENT.md)**
-- [Architecture and workflow boundaries](docs/ARCHITECTURE.md)
-- [Source data dictionary](docs/DATA_DICTIONARY.md)
-- [Accessibility audit](docs/ACCESSIBILITY_AUDIT.md)
-- [Operating cost model](docs/OPERATING_COST_MODEL.md)
-
-The application code is in this GitHub repository. The production deployment clones this repository directly onto one Vultr VM and starts it with Docker Compose. FastAPI serves the web pages and backend actions; there is no separately hosted frontend.
-
-**No purchased domain or DNS service is required.** The website is accessed at `https://VULTR_PUBLIC_IP`. Caddy obtains and renews a publicly trusted, short-lived HTTPS certificate for the VM's public IPv4 address.
+Wai Intelligence is business intelligence tool for WaterAid Canada. It has five key areas: funding prospecting, reporting intelligence, donor stewardship, ethical partnership due diligence, and proposal/grant compliance.
 
 ## Architecture
 
@@ -35,8 +23,6 @@ flowchart TB
     App -. optional outbound requests .-> Gemini[Gemini API]
 ```
 
-Only Caddy publishes web ports. FastAPI and PostgreSQL are on the private Docker network. Do not expose ports 8000 or 5432 publicly.
-
 ## Source datasets
 
 The expected source files are:
@@ -45,10 +31,6 @@ The expected source files are:
 - `gift_transactions_table.csv`
 - `CRM_interacions_table.csv` — the filename spelling is preserved from the supplied brief.
 - `video_email_data_table.csv`
-
-The application reads source rows in place from the mounted read-only folder. It does not import these raw source rows into PostgreSQL. The production CSV files must remain outside this public GitHub repository. The repository's sample CSV rows are for development/testing and are not a substitute for complete approved exports.
-
-The Constituent Source Data view reads the profile table and exact-matches `CONSTITUENT_ID` against the other three files in memory. It shows counts of matching detail rows; those counts are not represented as lifetime totals. Nothing from the join is persisted to PostgreSQL. Identifiers are treated as strings. `LIFETIME_GIVING` is displayed as supplied because the source schema does not specify a currency, and `CAPACITY_ESTIMATE` is labelled as a source-provided field rather than an independently validated estimate.
 
 ## Database and persistence
 
