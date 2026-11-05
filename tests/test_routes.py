@@ -132,3 +132,52 @@ def test_no_in_app_login_or_logout_routes(client):
     landing = client.get("/").text.lower()
     assert "sign in" not in landing
     assert "log in" not in landing
+
+
+def test_landing_page_uses_requested_carbon_content_without_removed_sections():
+    response = TestClient(app).get("/")
+    assert response.status_code == 200
+    html = response.text.lower()
+    assert 'class="eyebrow"' not in html
+    assert "landing-visual" not in html
+    assert "landing-flow" not in html
+    assert "shared decision process" not in html
+    assert "make the next decision with a clearer view of the evidence" not in html
+    assert "five workflows for funding research" in html
+
+
+def test_dashboard_stays_available_and_explains_missing_supabase(monkeypatch):
+    from app.supabase_client import SupabaseNotConfigured
+
+    def missing_database():
+        raise SupabaseNotConfigured("Supabase is not configured")
+
+    monkeypatch.setattr(web, "get_service_client", missing_database)
+    monkeypatch.setattr(workflows, "get_service_client", missing_database)
+    response = TestClient(app, raise_server_exceptions=False).get("/app")
+    assert response.status_code == 200
+    assert "The workspace is online" in response.text
+    assert "SUPABASE_URL" in response.text
+    assert "sql/schema.sql" in response.text
+    assert "Service temporarily unavailable" not in response.text
+
+
+def test_cross_workflow_navigation_uses_portfolio_tools_label(client):
+    response = client.get("/app")
+    assert response.status_code == 200
+    assert "PORTFOLIO TOOLS" in response.text
+    assert "SHARED RECORDS" not in response.text
+    tasks = client.get("/app/tasks")
+    assert "Portfolio tools" in tasks.text
+
+
+def test_dashboard_does_not_return_500_when_supabase_read_fails(monkeypatch):
+    def database_failure():
+        raise RuntimeError("simulated Supabase connection failure")
+
+    monkeypatch.setattr(web, "get_service_client", database_failure)
+    monkeypatch.setattr(workflows, "get_service_client", database_failure)
+    response = TestClient(app, raise_server_exceptions=False).get("/app")
+    assert response.status_code == 200
+    assert "Supabase could not return the workspace data" in response.text
+    assert "No placeholder metrics are shown" in response.text

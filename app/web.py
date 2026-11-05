@@ -91,22 +91,36 @@ async def ready():
 
 @router.get("/app", response_class=HTMLResponse, name="dashboard")
 async def dashboard(request: Request):
-    strategy = wf.get_strategy_context()
-    analytics = wf.reporting_analytics()
-    approvals = wf.approval_workspace()
-    tasks = wf.task_workspace()
-    pending = [x for x in approvals if x.get("status") == "pending"]
-    open_tasks = [x for x in tasks if x.get("status") in {"open", "in_progress"}]
-    imports: list[dict[str, Any]] = []
     try:
+        strategy = wf.get_strategy_context()
+        analytics = wf.reporting_analytics()
+        approvals = wf.approval_workspace()
+        tasks = wf.task_workspace()
+        pending = [x for x in approvals if x.get("status") == "pending"]
+        open_tasks = [x for x in tasks if x.get("status") in {"open", "in_progress"}]
         imports = wf.all_rows("data_imports", order="created_at", desc=True)[:8]
+        return render(request, "dashboard/index.html", context={
+            "strategy": strategy, "analytics": analytics, "pending_reviews": len(pending),
+            "open_tasks": len(open_tasks), "recent_imports": imports,
+            "data_counts": {"gifts": analytics["gift_count"], "interactions": analytics["crm_interactions"],
+                            "video_events": analytics["quality"]["video_email_records"]},
+            "connection_issue": None, "modules": MODULES,
+        })
+    except SupabaseNotConfigured:
+        log.warning("Portfolio overview opened while Supabase is not configured")
+        connection_issue = (
+            "Supabase is not configured. Add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY to the server environment, "
+            "run sql/schema.sql in the Supabase SQL Editor, then restart the application."
+        )
     except Exception:
-        log.exception("Unable to load recent imports")
-    return render(request, "dashboard/index.html", context={
-        "strategy": strategy, "analytics": analytics, "pending_reviews": len(pending),
-        "open_tasks": len(open_tasks), "recent_imports": imports,
-        "data_counts": {"gifts": analytics["gift_count"], "interactions": analytics["crm_interactions"],
-                        "video_events": analytics["quality"]["video_email_records"]},
+        log.exception("Portfolio overview could not load Supabase workspace data")
+        connection_issue = (
+            "The application is running, but Supabase could not return the workspace data. Confirm the project URL "
+            "and server-side service-role key, verify that sql/schema.sql has been applied, and check the application "
+            "logs for the underlying database error. No placeholder metrics are shown."
+        )
+    return render(request, "dashboard/index.html", status_code=200, context={
+        "connection_issue": connection_issue, "modules": MODULES,
     })
 
 

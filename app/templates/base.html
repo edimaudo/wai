@@ -41,7 +41,7 @@
         <a class="nav-link {% if request.url.path.startswith('/app/donors') %}is-active{% endif %}" href="/app/donors" data-short="S">{{ t('donors') }}</a>
         <a class="nav-link {% if request.url.path.startswith('/app/partnerships') %}is-active{% endif %}" href="/app/partnerships" data-short="P">{{ t('partnerships') }}</a>
         <a class="nav-link {% if request.url.path.startswith('/app/grants') %}is-active{% endif %}" href="/app/grants" data-short="G">{{ t('grants') }}</a>
-        <div class="nav-label">{{ 'SHARED RECORDS' if language == 'en-CA' else 'DOSSIERS PARTAGÉS' }}</div>
+        <div class="nav-label">{{ t('portfolio_tools') }}</div>
         <a class="nav-link {% if request.url.path.startswith('/app/reviews') %}is-active{% endif %}" href="/app/reviews" data-short="V">{{ 'Human review' if language == 'en-CA' else 'Révision humaine' }}</a>
         <a class="nav-link {% if request.url.path.startswith('/app/tasks') %}is-active{% endif %}" href="/app/tasks" data-short="T">{{ 'Follow-up tasks' if language == 'en-CA' else 'Tâches de suivi' }}</a>
         <a class="nav-link {% if request.url.path.startswith('/app/evidence') %}is-active{% endif %}" href="/app/evidence" data-short="E">{{ 'Evidence register' if language == 'en-CA' else 'Registre des preuves' }}</a>

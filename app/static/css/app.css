@@ -455,3 +455,123 @@ html[data-theme="dark"] .eyebrow { color: #c6c6c6; }
   .inline-form { align-items: stretch; }
   .inline-form input, .inline-form select { width: 100%; }
 }
+
+
+/* Carbon-aligned product styling: neutral layers, 2px geometry, clear rules, no floating-card effects. */
+:root {
+  --ink: #161616;
+  --muted: #525252;
+  --surface: #ffffff;
+  --surface-soft: #f4f4f4;
+  --surface-raised: #ffffff;
+  --border: #e0e0e0;
+  --border-strong: #8d8d8d;
+  --nav-bg: #161616;
+  --nav-text: #f4f4f4;
+  --shadow: none;
+}
+html[data-theme="dark"] {
+  --ink: #f4f4f4;
+  --muted: #c6c6c6;
+  --surface: #262626;
+  --surface-soft: #161616;
+  --surface-raised: #393939;
+  --border: #525252;
+  --border-strong: #8d8d8d;
+  --nav-bg: #000000;
+  --nav-text: #f4f4f4;
+  --shadow: none;
+}
+body { background: var(--surface-soft); }
+.public-shell { background: var(--surface); }
+.public-header { min-height: 4rem; border-bottom: 1px solid var(--border); }
+.public-brand { font-size: 1.125rem; font-weight: 700; letter-spacing: -.025em; }
+.public-brand span { font-weight: 400; }
+.preference-group, .language-control, .icon-button { border-radius: 0; box-shadow: none; }
+.preference-group { background: var(--surface); padding: 0; }
+.size-button { min-height: 2rem; border-radius: 0; }
+.size-button[aria-pressed="true"] { background: #e0e0e0; color: #161616; box-shadow: inset 0 -2px 0 #161616; }
+html[data-theme="dark"] .size-button[aria-pressed="true"] { background: #525252; color: #ffffff; box-shadow: inset 0 -2px 0 #ffffff; }
+.button, .button-primary, .button-secondary, .button-quiet, .button-danger-quiet,
+.language-control, .icon-button, .status-chip, .form-field input, .form-field textarea,
+.form-field select, .inline-form input, .inline-form select, .review-action-form input,
+.review-action-form select { border-radius: 0; box-shadow: none; }
+.button { min-height: 3rem; font-weight: 600; transition: background-color .12s ease, border-color .12s ease; }
+.button:hover { transform: none; }
+.button-primary { border-color: #00aEEF; background: #00aEEF; color: #000000; }
+.button-primary:hover { border-color: #0092c7; background: #33bdf0; }
+.button-secondary { border: 1px solid #8d8d8d; background: #f4f4f4; color: #161616; }
+.button-secondary:hover { border-color: #161616; background: #e0e0e0; }
+html[data-theme="dark"] .button-secondary { border-color: #8d8d8d; background: #393939; color: #f4f4f4; }
+html[data-theme="dark"] .button-secondary:hover { background: #525252; }
+.panel, .metric-card, .module-card, .admin-card, .pillar-card, .criterion-edit-card {
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.panel { border: 1px solid var(--border); background: var(--surface); }
+.metric-card { border: 0; border-left: 1px solid var(--border-strong); border-bottom: 1px solid var(--border); background: var(--surface); }
+.metric-card-accent { border-top: 0; border-left: 3px solid var(--wateraid-blue); }
+.module-card { border: 1px solid var(--border); background: var(--surface); }
+.module-card:hover { border-color: var(--wateraid-blue); transform: none; box-shadow: none; }
+.status-chip { border-radius: 2px; }
+.nav-link { border-radius: 0; }
+.nav-link.is-active { background: #393939; box-shadow: inset 3px 0 0 var(--wateraid-blue); }
+.topbar { background: var(--surface); backdrop-filter: none; }
+.form-field input, .form-field textarea, .form-field select, .inline-form input, .inline-form select,
+.review-action-form input, .review-action-form select { min-height: 3rem; border: 1px solid var(--border-strong); }
+.form-field input:focus, .form-field textarea:focus, .form-field select:focus { outline: 2px solid var(--wateraid-blue); outline-offset: 1px; }
+
+/* Public landing page: editorial hierarchy and a simple five-workflow directory. */
+.landing-main { width: 100%; flex: 1; }
+.landing-hero { display: block; min-height: 0; max-width: 90rem; margin: 0 auto; padding: 5.5rem 2.5rem 4rem; }
+.landing-copy { max-width: 58rem; padding: 0; }
+.landing-hero h1 { max-width: 54rem; margin: 0 0 1.5rem; font-size: clamp(2.5rem, 5vw, 4.5rem); font-weight: 600; line-height: 1.08; letter-spacing: -.04em; }
+.landing-subhead { max-width: 48rem; margin: 0 0 1rem; font-size: clamp(1.2rem, 2vw, 1.65rem); font-weight: 500; line-height: 1.4; }
+.landing-description { max-width: 49rem; margin: 0; color: var(--muted); font-size: 1rem; line-height: 1.65; }
+.landing-cta { margin-top: 2rem; min-height: 3rem; padding: .8rem 1.25rem; }
+.landing-pillars { max-width: 90rem; margin: 0 auto; padding: 2rem 2.5rem 4rem; border-top: 1px solid var(--border); }
+.landing-pillars .section-heading { max-width: 55rem; margin-bottom: 1.5rem; }
+.landing-pillars .section-heading h2 { margin: 0 0 .5rem; font-size: 1.75rem; font-weight: 600; }
+.landing-pillars .section-heading > p:last-child { margin: 0; color: var(--muted); line-height: 1.5; }
+.pillar-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; border: 1px solid var(--border); background: var(--surface); }
+.pillar-card { min-height: 15rem; padding: 1.25rem; border: 0; border-right: 1px solid var(--border); background: var(--surface); }
+.pillar-card:last-child { border-right: 0; }
+.pillar-index { color: #006b8f; }
+html[data-theme="dark"] .pillar-index { color: #56c8f2; }
+.pillar-card h3 { margin: 1.15rem 0 .7rem; font-size: 1rem; font-weight: 600; line-height: 1.35; }
+.pillar-card p { color: var(--muted); font-size: .84rem; line-height: 1.5; }
+.pillar-card a { color: #006b8f; text-decoration: underline; text-underline-offset: .2em; }
+html[data-theme="dark"] .pillar-card a { color: #56c8f2; }
+
+/* Clear connection state on the app overview: no false zero metrics or generic 500 screen. */
+.connection-state { display: flex; align-items: flex-start; gap: 1rem; margin: 1.5rem 0 2rem; padding: 1.25rem; border: 1px solid #8d8d8d; border-left: 4px solid #b28600; background: var(--surface); }
+.connection-state-mark { display: grid; width: 2rem; height: 2rem; flex: 0 0 auto; place-items: center; background: #f1c21b; color: #161616; font-weight: 700; }
+.connection-state-content { min-width: 0; }
+.connection-state h2 { margin: 0 0 .45rem; font-size: 1.15rem; font-weight: 600; }
+.connection-state p { max-width: 68rem; margin: 0; color: var(--muted); font-size: .86rem; line-height: 1.55; }
+.connection-state-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .8rem 1rem; margin-top: 1rem; }
+.workflow-directory { padding: 1.25rem; border-top: 1px solid var(--border-strong); background: var(--surface); }
+.workflow-directory h2 { margin: 0 0 .35rem; font-size: 1.25rem; }
+.workflow-directory > p { margin: 0 0 1rem; }
+.workflow-directory-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--border); }
+.workflow-directory-item { min-width: 0; padding: 1rem; border-right: 1px solid var(--border); }
+.workflow-directory-item:last-child { border-right: 0; }
+.workflow-directory-item > span { display: block; margin-bottom: .75rem; color: var(--muted); font-size: .75rem; }
+.workflow-directory-item strong { display: block; font-size: .88rem; line-height: 1.4; }
+.workflow-directory-item p { margin: .5rem 0 0; color: var(--muted); font-size: .76rem; line-height: 1.5; }
+@media (max-width: 1100px) {
+  .landing-hero { padding: 4rem 2rem 3rem; }
+  .landing-pillars { padding-inline: 2rem; }
+  .pillar-grid, .workflow-directory-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pillar-card, .pillar-card:last-child, .workflow-directory-item { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); }
+  .pillar-card:last-child { grid-column: auto; }
+}
+@media (max-width: 760px) {
+  .landing-hero { padding: 3rem 1.2rem 2.5rem; }
+  .landing-hero h1 { font-size: clamp(2.25rem, 11vw, 3.2rem); }
+  .landing-pillars { padding: 1.75rem 1.2rem 2.5rem; }
+  .pillar-grid, .workflow-directory-grid { grid-template-columns: 1fr; }
+  .pillar-card, .pillar-card:last-child, .workflow-directory-item { min-height: 0; border-right: 0; border-bottom: 1px solid var(--border); }
+  .connection-state { padding: 1rem; }
+  .workflow-directory { padding: 1rem; }
+}
