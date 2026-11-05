@@ -1,18 +1,52 @@
 services:
   wai-web:
     build: .
-    container_name: wai-intelligence-web
+    image: wai-intelligence:local
     restart: unless-stopped
-    env_file:
-      - .env
+    env_file: .env
     environment:
       DATA_DIR: /app/data
+      UPLOAD_DIR: /app/data/uploads
+    expose:
+      - "8000"
     volumes:
-      - ./data:/app/data:ro
-    ports:
-      - "127.0.0.1:8000:8000"
+      - ./data/source:/app/data/source:ro
+      - ./data/dictionaries:/app/data/dictionaries:ro
+      - wai_uploads:/app/data/uploads
+    networks:
+      - wai-private
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://127.0.0.1:8000/health"]
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8000/health >/dev/null"]
       interval: 30s
       timeout: 5s
       retries: 3
+      start_period: 20s
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - wai-private
+    depends_on:
+      wai-web:
+        condition: service_healthy
+
+networks:
+  wai-private:
+    driver: bridge
+
+volumes:
+  wai_uploads:
+  caddy_data:
+  caddy_config:

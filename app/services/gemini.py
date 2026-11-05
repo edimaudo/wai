@@ -1,8 +1,6 @@
 from functools import lru_cache
 from typing import Any
 
-from google import genai
-
 from app.config import settings
 
 
@@ -14,6 +12,10 @@ class GeminiNotConfigured(RuntimeError):
 def get_gemini_client():
     if not settings.gemini_api_key:
         raise GeminiNotConfigured("GEMINI_API_KEY is not configured.")
+    try:
+        from google import genai
+    except ImportError as exc:
+        raise RuntimeError("The Google Gen AI Python package is not installed.") from exc
     return genai.Client(api_key=settings.gemini_api_key)
 
 

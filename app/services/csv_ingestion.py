@@ -21,6 +21,15 @@ DATASETS: dict[str, dict[str, Any]] = {
         "required": ["CONSTITUENT_ID", "CRM_INTERACTION_DATE", "CRM_INTERACTION_TYPE"],
         "fields": ["CONSTITUENT_ID", "CRM_INTERACTION_DATE", "CRM_INTERACTION_TYPE"],
     },
+    "constituent_profiles": {
+        "table": "constituent_profiles",
+        "required": ["CONSTITUENT_ID"],
+        "fields": [
+            "CONSTITUENT_ID", "MANAGED_PROSPECT", "LIFETIME_GIVING", "LIFETIME_GIFT_COUNT",
+            "FIRST_GIFT_DATE", "LAST_GIFT_DATE", "LIFETIME_CRM_INTERACTIONS",
+            "FIRST_CRM_INTERACTION_DATE", "LAST_CRM_INTERACTION_DATE", "CAPACITY_ESTIMATE",
+        ],
+    },
     "video_email_events": {
         "table": "video_email_events",
         "required": ["CONSTITUENT_ID", "CONTACT_ID", "SENT_DATE"],
@@ -45,6 +54,8 @@ def identify_dataset(path: Path) -> str | None:
     # Accept the supplied filename spelling "CRM_interacions_table" as well as the corrected spelling.
     if name.startswith("crminterac"):
         return "crm_interactions"
+    if "constituentprofile" in name:
+        return "constituent_profiles"
     if "videoemail" in name:
         return "video_email_events"
     return None
@@ -79,7 +90,7 @@ def _parse_number(value: Any, field: str) -> int | str | None:
         raise ValueError(f"Invalid number for {field}: {cleaned}") from exc
     if not number.is_finite():
         raise ValueError(f"{field} must be a finite number.")
-    if field in {"CLICKS", "VIDEO_VIEWS", "VIDEO_SHARES_TO_FACEBOOK"}:
+    if field in {"CLICKS", "VIDEO_VIEWS", "VIDEO_SHARES_TO_FACEBOOK", "LIFETIME_GIFT_COUNT", "LIFETIME_CRM_INTERACTIONS"}:
         if number != number.to_integral_value() or number < 0:
             raise ValueError(f"{field} must be a non-negative whole number.")
         return int(number)
@@ -119,6 +130,15 @@ def _normalize_row(dataset: str, raw: dict[str, Any], source_file: str) -> dict[
         row["crm_interaction_date"] = _parse_date(row["crm_interaction_date"])
         if not row["constituent_id"] or not row["crm_interaction_date"] or not row["crm_interaction_type"]:
             raise ValueError("CONSTITUENT_ID, CRM_INTERACTION_DATE and CRM_INTERACTION_TYPE are required.")
+    elif dataset == "constituent_profiles":
+        row["managed_prospect"] = _parse_bool(row["managed_prospect"], "MANAGED_PROSPECT")
+        row["lifetime_giving"] = _parse_number(row["lifetime_giving"], "LIFETIME_GIVING")
+        row["lifetime_gift_count"] = _parse_number(row["lifetime_gift_count"], "LIFETIME_GIFT_COUNT")
+        row["lifetime_crm_interactions"] = _parse_number(row["lifetime_crm_interactions"], "LIFETIME_CRM_INTERACTIONS")
+        for field in ("first_gift_date", "last_gift_date", "first_crm_interaction_date", "last_crm_interaction_date"):
+            row[field] = _parse_date(row[field])
+        if not row["constituent_id"]:
+            raise ValueError("CONSTITUENT_ID is required.")
     elif dataset == "video_email_events":
         row["sent_date"] = _parse_date(row["sent_date"])
         row["opened_date"] = _parse_date(row["opened_date"])
@@ -222,12 +242,12 @@ def import_csv_file(path: Path, root: Path | None = None) -> dict[str, Any]:
                 continue
 
             if len(batch) >= 200:
-                client.table(spec["table"]).upsert(batch, on_conflict="record_hash").execute()
+                client.table(spec["table"]).upsert(batch, on_conflict=("constituent_id" if dataset == "constituent_profiles" else "record_hash")).execute()
                 imported += len(batch)
                 batch.clear()
 
     if batch:
-        client.table(spec["table"]).upsert(batch, on_conflict="record_hash").execute()
+        client.table(spec["table"]).upsert(batch, on_conflict=("constituent_id" if dataset == "constituent_profiles" else "record_hash")).execute()
         imported += len(batch)
 
     status_value = "completed" if rejected == 0 else ("completed_with_errors" if imported else "failed")

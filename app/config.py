@@ -16,11 +16,16 @@ class Settings(BaseSettings):
     supabase_service_role_key: str = ""
 
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-3.6-flash"
+    gemini_model: str = "gemini-3.8-flash"
 
     data_dir: Path = PROJECT_ROOT / "data"
+    upload_dir: Path = PROJECT_ROOT / "data" / "uploads"
     max_csv_import_rows: int = 250_000
+    max_upload_mb: int = 20
+    source_timeout_seconds: int = 15
     source_monitoring_default_frequency: str = "weekly"
+    source_monitor_poll_seconds: int = 600
+    source_monitor_enabled: bool = True
 
     model_config = SettingsConfigDict(
         env_file=PROJECT_ROOT / ".env",

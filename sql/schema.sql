@@ -522,3 +522,187 @@ grant all privileges on all tables in schema public to service_role;
 grant all privileges on all sequences in schema public to service_role;
 alter default privileges in schema public grant all on tables to service_role;
 alter default privileges in schema public grant all on sequences to service_role;
+
+-- Functional workflow extensions. These tables are used by the server-side
+-- Supabase client; no database credentials are sent to the browser.
+create table if not exists public.constituent_profiles (
+  constituent_id text primary key,
+  managed_prospect boolean,
+  lifetime_giving numeric(16,2),
+  lifetime_gift_count integer,
+  first_gift_date date,
+  last_gift_date date,
+  lifetime_crm_interactions integer,
+  first_crm_interaction_date date,
+  last_crm_interaction_date date,
+  capacity_estimate text,
+  source_file text not null,
+  record_hash text not null unique,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.organization_context (
+  id smallint primary key default 1 check (id = 1),
+  mission text,
+  vision text,
+  long_term_objectives text,
+  growth_plan text,
+  key_advantages text,
+  community_impact text,
+  strategic_priorities text,
+  values_statement text,
+  refined_context jsonb not null default '{}'::jsonb,
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.funding_criteria (
+  id smallint primary key default 1 check (id = 1),
+  focus_terms text[] not null default array['water','sanitation','hygiene','WASH','climate resilience'],
+  geography_terms text[] not null default array['international','Africa','Asia','Pacific','ODA'],
+  excluded_terms text[] not null default array['invitation only','individual applicant','fellowship'],
+  weights jsonb not null default '{"mission":35,"geography":25,"eligibility":25,"timing":15}'::jsonb,
+  version integer not null default 1,
+  updated_at timestamptz not null default now()
+);
+
+alter table public.source_registry add column if not exists last_content_hash text;
+alter table public.source_registry add column if not exists last_http_status integer;
+alter table public.source_registry add column if not exists last_status text;
+alter table public.source_registry add column if not exists last_page_title text;
+alter table public.funding_opportunities add column if not exists funder_name text;
+alter table public.funding_opportunities add column if not exists focus_areas text;
+alter table public.funding_opportunities add column if not exists geography text;
+alter table public.funding_opportunities add column if not exists eligibility_text text;
+alter table public.funding_opportunities add column if not exists contact_name text;
+alter table public.funding_opportunities add column if not exists contact_email text;
+alter table public.funding_opportunities add column if not exists support_case text;
+alter table public.funding_opportunities add column if not exists decision_reason text;
+alter table public.proposal_versions add column if not exists extracted_text text;
+alter table public.proposal_versions add column if not exists document_type text;
+alter table public.obligations add column if not exists review_status text not null default 'pending_review';
+alter table public.obligations add column if not exists source_document_id uuid references public.source_documents(id);
+
+create table if not exists public.workflow_tasks (
+  id uuid primary key default gen_random_uuid(),
+  module_key text not null,
+  entity_type text,
+  entity_id text,
+  title text not null,
+  description text,
+  owner_label text,
+  priority text not null default 'medium' check (priority in ('low','medium','high','urgent')),
+  due_date date,
+  status text not null default 'open' check (status in ('open','in_progress','completed','cancelled')),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.grant_documents (
+  id uuid primary key default gen_random_uuid(),
+  grant_id uuid references public.grants(id) on delete cascade,
+  proposal_id uuid references public.proposals(id) on delete cascade,
+  document_type text not null,
+  filename text not null,
+  storage_path text not null,
+  content_hash text not null,
+  version_label text not null,
+  extracted_text text,
+  extraction_status text not null default 'completed',
+  review_status text not null default 'pending_review',
+  critique jsonb not null default '{}'::jsonb,
+  candidate_obligations jsonb not null default '[]'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.partner_framework_criteria (
+  id uuid primary key default gen_random_uuid(),
+  criterion_key text not null unique,
+  title text not null,
+  description text not null,
+  framework_version text not null default 'demonstration-assumption-v1',
+  is_active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+-- Uploaded policy source used by partnership criteria. A document is not active
+-- until a reviewer maps every active criterion to an exact clause and activates it.
+create table if not exists public.partner_framework_documents (
+  id uuid primary key default gen_random_uuid(),
+  filename text not null,
+  storage_path text not null,
+  content_hash text not null unique,
+  extracted_text text not null,
+  extraction_status text not null default 'completed',
+  framework_version text not null,
+  status text not null default 'pending_review' check (status in ('pending_review','active','superseded')),
+  activated_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table public.partner_framework_criteria
+  add column if not exists policy_document_id uuid references public.partner_framework_documents(id);
+alter table public.partner_framework_criteria
+  add column if not exists policy_clause_reference text;
+alter table public.partner_assessments
+  add column if not exists policy_document_id uuid references public.partner_framework_documents(id);
+create unique index if not exists idx_one_active_partner_framework
+  on public.partner_framework_documents(status) where status = 'active';
+create index if not exists idx_partner_framework_created
+  on public.partner_framework_documents(created_at desc);
+alter table public.partner_framework_documents enable row level security;
+revoke all on public.partner_framework_documents from anon, authenticated;
+grant all on public.partner_framework_documents to service_role;
+
+create index if not exists idx_constituent_profiles_id on public.constituent_profiles(constituent_id);
+create index if not exists idx_workflow_tasks_status_due on public.workflow_tasks(status, due_date);
+create index if not exists idx_grant_documents_grant on public.grant_documents(grant_id, created_at desc);
+create index if not exists idx_grant_documents_proposal on public.grant_documents(proposal_id, created_at desc);
+
+alter table public.constituent_profiles enable row level security;
+alter table public.organization_context enable row level security;
+alter table public.funding_criteria enable row level security;
+alter table public.workflow_tasks enable row level security;
+alter table public.grant_documents enable row level security;
+alter table public.partner_framework_criteria enable row level security;
+revoke all on all tables in schema public from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+grant all on all tables in schema public to service_role;
+grant usage on schema public to service_role;
+
+create table if not exists public.opportunity_briefs (
+  id uuid primary key default gen_random_uuid(),
+  opportunity_id uuid not null references public.funding_opportunities(id) on delete cascade,
+  body text not null,
+  fit_score numeric(5,2),
+  criterion_scores jsonb not null default '{}'::jsonb,
+  source_url text,
+  status text not null default 'draft_requires_review',
+  created_at timestamptz not null default now()
+);
+create index if not exists idx_opportunity_briefs_opportunity on public.opportunity_briefs(opportunity_id, created_at desc);
+alter table public.opportunity_briefs enable row level security;
+revoke all on all tables in schema public from anon, authenticated;
+grant all on all tables in schema public to service_role;
+
+-- Make shared task entity references polymorphic. Constituent IDs are source text IDs,
+-- while opportunities, grants and assessments use UUIDs. Text preserves both exactly.
+alter table public.workflow_tasks alter column entity_id type text using entity_id::text;
+
+-- Audit events and generic task references span different source identifier types.
+alter table public.audit_events alter column entity_id type text using entity_id::text;
+
+
+-- Curated Canadian public funding and historical-award sources for first deployment.
+-- These are source-monitoring entry points, not pre-approved funding opportunities.
+insert into public.source_registry
+  (name, source_type, url, jurisdiction, international_funding_relevance, monitoring_frequency, is_active, reliability_notes)
+select v.name, v.source_type, v.url, 'Canada', true, v.frequency, true, v.notes
+from (values
+  ('Global Affairs Canada — current and upcoming international assistance calls', 'Government funding calls', 'https://www.international.gc.ca/world-monde/funding-financement/open_calls-appels_ouverts.aspx?lang=eng', 'weekly', 'Official source for current and upcoming international assistance opportunities. Verify the status, eligibility and dates on each individual call page.'),
+  ('Global Affairs Canada — international assistance funding processes', 'Government funding strategy and process', 'https://www.international.gc.ca/world-monde/funding-financement/funding_processes-processus_financement.aspx?lang=eng', 'monthly', 'Official source describing funding mechanisms and strategic processes. Signals are not open calls unless a specific active opportunity is published.'),
+  ('Grand Challenges Canada — current funding opportunities', 'Canadian foundation / innovation funder', 'https://www.grandchallenges.ca/apply-for-funding/', 'weekly', 'Official listing of open and past funding opportunities. Confirm the active call details and applicant eligibility in the linked funding opportunity document.'),
+  ('Open Government of Canada — Global Affairs Canada grants and contributions', 'Government grants and awards data', 'https://search.open.canada.ca/grants/?owner_org=dfatd-maecd', 'monthly', 'Historical awards and recipient data for funder research and network mapping; not an application-call feed.')
+) as v(name, source_type, url, frequency, notes)
+where not exists (select 1 from public.source_registry s where s.url = v.url);
+

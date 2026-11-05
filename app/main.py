@@ -1,3 +1,7 @@
+import asyncio
+import logging
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import HTTPException
 from fastapi.staticfiles import StaticFiles
@@ -5,8 +9,46 @@ from fastapi.staticfiles import StaticFiles
 from app.config import PROJECT_ROOT, settings
 from app.i18n import get_translation
 from app.web import render, router
+from app.services.workflows import WorkflowError, check_due_funding_sources
+from app.supabase_client import SupabaseNotConfigured
 
-app = FastAPI(title=settings.app_name, docs_url=None, redoc_url=None, openapi_url=None)
+logger = logging.getLogger("wai-intelligence")
+
+
+async def _source_monitor_loop() -> None:
+    """Run due public-source checks inside the web process to keep deployment simple."""
+    interval = max(60, settings.source_monitor_poll_seconds)
+    logger.info("Funding source monitor started; polling every %s seconds", interval)
+    while True:
+        try:
+            result = await check_due_funding_sources()
+            checked = int(result.get("checked", 0))
+            if checked:
+                logger.info("Checked %s due public funding sources", checked)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Scheduled funding source check failed")
+        await asyncio.sleep(interval)
+
+
+@asynccontextmanager
+async def lifespan(application: FastAPI):
+    monitor_task = None
+    if settings.source_monitor_enabled and settings.supabase_configured:
+        monitor_task = asyncio.create_task(_source_monitor_loop(), name="wai-source-monitor")
+    try:
+        yield
+    finally:
+        if monitor_task:
+            monitor_task.cancel()
+            try:
+                await monitor_task
+            except asyncio.CancelledError:
+                pass
+
+
+app = FastAPI(title=settings.app_name, docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 app.mount("/static", StaticFiles(directory=str(PROJECT_ROOT / "app" / "static")), name="static")
 app.include_router(router)
 
@@ -28,6 +70,16 @@ async def security_headers(request: Request, call_next):
 @app.get("/health", include_in_schema=False)
 async def health():
     return {"status": "ok", "service": "wai-intelligence"}
+
+
+@app.exception_handler(WorkflowError)
+async def workflow_error_handler(request: Request, exc: WorkflowError):
+    return render(request, "errors/request.html", context={"error_message": str(exc), "error_code": 400}, status_code=400)
+
+
+@app.exception_handler(SupabaseNotConfigured)
+async def database_not_configured_handler(request: Request, exc: SupabaseNotConfigured):
+    return render(request, "errors/unavailable.html", context={"error_code": 503}, status_code=503)
 
 
 @app.exception_handler(404)
