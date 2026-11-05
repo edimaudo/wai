@@ -2,14 +2,44 @@
 {% block title %}{{ t('stewardship') }} | Wai Intelligence{% endblock %}
 {% block breadcrumb %}{{ t('stewardship') }}{% endblock %}
 {% block content %}
-<div class="page-heading"><div><span class="section-label">03 / RELATIONSHIPS</span><h1>{{ t('donors_title') }}</h1><p>{{ t('donors_sub') }}</p></div><div class="heading-actions"><span class="status-pill status-neutral">{{ t('synthetic_donor_profiles') }}</span><a class="button button-secondary button-small" href="/app/constituents">{{ t('constituent_source_link') }}</a></div></div>
-<div class="notice notice-info"><strong>{{ t('synthetic_profiles_notice_title') }}</strong><p>{{ t('synthetic_profiles_notice_body') }}</p></div>
-<div class="donor-grid">
-{% for donor in donors %}<article class="panel donor-card"><div class="donor-card-top"><div class="donor-avatar">{{ donor.display_name[:1] }}</div><div><h2>{{ donor.display_name }}</h2><span>{{ donor.segment }} · {{ donor.synthetic_ref }}</span></div><span class="traffic-light light-{{ donor.engagement_status }}" title="{{ donor.engagement_status|replace('_',' ') }}"></span></div><div class="donor-card-body"><div><span class="detail-label">{{ t('giving_history') }}</span><p>{{ donor.giving_summary }}</p></div><div><span class="detail-label">{{ t('preferences') }}</span><p>{{ donor.preferences }}</p></div><div><span class="detail-label">{{ t('restrictions') }}</span><p>{{ donor.restrictions }}</p></div></div><div class="donor-card-footer"><span>Last gift · {{ donor.last_gift_date|datefmt(lang) }}</span><a class="text-link" href="/app/stewardship/{{ donor.id }}">Review donor →</a></div></article>{% endfor %}
+<div class="page-heading"><div><h1>{{ t('donors_title') }}</h1><p>Constituent stewardship based on the supplied constituent, gift and CRM source records.</p></div><a class="button button-secondary" href="/app/constituents">Open constituent source data</a></div>
+<div class="notice notice-info"><strong>Source-driven constituent records</strong><p>Wai uses the constituent IDs and profile fields supplied in the CSV files. The supplied profile export does not contain constituent names, contact permissions or communication preferences, so those fields are not invented. Confirm names and permitted contact channels in the authoritative CRM before any outreach.</p></div>
+<div class="metric-grid">
+ <div class="metric-card"><span>Constituent profiles</span><strong>{{ source_counts.constituents }}</strong></div>
+ <div class="metric-card"><span>Matched gift profiles</span><strong>{{ join_coverage.gift_matched_profiles }}</strong></div>
+ <div class="metric-card"><span>Matched interaction profiles</span><strong>{{ join_coverage.interaction_matched_profiles }}</strong></div>
 </div>
-{% endblock %}
-
-<section class="panel" aria-labelledby="constituent-source-heading">
-  <div class="panel-heading"><div><h2 id="constituent-source-heading">{{ t('constituent_source_title') }}</h2><p>{{ t('constituent_source_subtitle') }}</p></div><a class="text-link" href="/app/constituents">{{ t('constituent_source_link') }} →</a></div>
-  <p class="micro-note">{{ t('constituent_currency_note') }}</p>
+<div class="two-col-layout">
+ <section class="panel"><div class="panel-heading"><div><h2>Constituent segments</h2><p>Managed-prospect status directly from the source profile.</p></div></div><div class="table-wrap"><table><thead><tr><th>Source segment</th><th>Constituents</th></tr></thead><tbody>{% for item in profile_segments.managed_status %}<tr><td>{{ item.segment }}</td><td>{{ item.count }}</td></tr>{% endfor %}</tbody></table></div></section>
+ <section class="panel"><div class="panel-heading"><div><h2>Source capacity bands</h2><p>Source-provided categories; not estimates calculated by Wai.</p></div></div><div class="table-wrap"><table><thead><tr><th>Capacity estimate field</th><th>Constituents</th></tr></thead><tbody>{% for item in profile_segments.source_capacity_bands %}<tr><td>{{ item.segment }}</td><td>{{ item.count }}</td></tr>{% endfor %}</tbody></table></div><p class="micro-note">{{ profile_segments.note }}</p></section>
+</div>
+<section class="panel"><div class="panel-heading"><div><h2>Constituent register</h2><p>One row per source constituent ID. Exact-ID matching only.</p></div></div>
+{% if constituent_profiles %}
+<div class="table-wrap" tabindex="0" role="region" aria-label="Constituent register"><table><thead><tr><th>Constituent ID</th><th>Managed prospect</th><th>Lifetime giving (source)</th><th>Lifetime gifts (source)</th><th>First / last gift</th><th>Lifetime CRM interactions</th><th>Last CRM interaction</th><th>Capacity band (source)</th><th>Gift rows matched</th><th>CRM rows matched</th><th>Video/email rows</th><th>Opens / clicks</th><th>Views / completions</th><th>Profile RFM</th><th>Stewardship record</th></tr></thead><tbody>
+{% for row in constituent_profiles %}<tr>
+ <th scope="row">{{ row.CONSTITUENT_ID }}</th>
+ <td>{{ 'Yes' if row.MANAGED_PROSPECT == '1' else 'No' if row.MANAGED_PROSPECT == '0' else row.MANAGED_PROSPECT or 'Not supplied' }}</td>
+ <td>{{ row.LIFETIME_GIVING or 'Not supplied' }}</td>
+ <td>{{ row.LIFETIME_GIFT_COUNT or 'Not supplied' }}</td>
+ <td>{{ row.FIRST_GIFT_DATE or 'Not supplied' }} / {{ row.LAST_GIFT_DATE or 'Not supplied' }}</td>
+ <td>{{ row.LIFETIME_CRM_INTERACTIONS or 'Not supplied' }}</td>
+ <td>{{ row.LAST_SOURCE_INTERACTION or 'No exact ID match' }}{% if row.LAST_SOURCE_INTERACTION_TYPE %} · {{ row.LAST_SOURCE_INTERACTION_TYPE }}{% endif %}</td>
+ <td>{{ row.CAPACITY_ESTIMATE or 'Not supplied' }}</td>
+ <td>{{ row.GIFT_TRANSACTION_ROWS }}</td><td>{{ row.CRM_INTERACTION_ROWS }}</td>
+ <td>{{ row.VIDEO_EMAIL_ROWS }}</td><td>{{ row.EMAIL_OPENS }} / {{ row.EMAIL_CLICKS }}</td><td>{{ row.VIDEO_VIEWS }} / {{ row.VIDEO_COMPLETIONS }}</td>
+ <td>{% if row.RFM %}R{{ row.RFM.r_score if row.RFM.r_score is not none else '—' }} F{{ row.RFM.f_score if row.RFM.f_score is not none else '—' }} M{{ row.RFM.m_score if row.RFM.m_score is not none else '—' }}<small>{{ row.RFM.segment }}</small>{% else %}No complete RFM profile{% endif %}</td>
+ <td>
+  {% set donor = enrichment_by_constituent.get(row.CONSTITUENT_ID) %}
+  {% if donor %}<a class="button button-secondary button-small" href="/app/stewardship/{{ donor.id }}">Open donor record · {{ donor.display_name }}</a>{% else %}<span class="micro-note">No staff CRM enrichment yet</span>{% endif %}
+  <details><summary>{{ 'Edit CRM enrichment' if donor else 'Add CRM enrichment' }}</summary><form method="post" action="/app/stewardship/constituent/{{ row.CONSTITUENT_ID }}/profile" class="stack-form compact-form"><input type="hidden" name="csrf" value="{{ csrf_token }}"><label>Donor name from authoritative CRM<input name="display_name" value="{{ donor.display_name if donor else '' }}" required maxlength="120"></label><label>Stewardship segment<input name="segment" value="{{ donor.segment if donor else 'Individual' }}" maxlength="60"></label><label>Recorded communication preferences<input name="preferences" value="{{ donor.preferences if donor and donor.preferences and 'Not recorded' not in donor.preferences else '' }}" placeholder="Confirm preferred channel and frequency"></label><label>Recorded contact restrictions<input name="restrictions" value="{{ donor.restrictions if donor and donor.restrictions and 'Not recorded' not in donor.restrictions else '' }}" placeholder="Enter restrictions exactly as recorded"></label><label>Next follow-up action<textarea name="open_follow_up" rows="2">{{ donor.open_follow_up if donor else '' }}</textarea></label><button class="button button-secondary button-small" type="submit">{{ 'Update donor record' if donor else 'Save donor record' }}</button></form></details>
+  <form method="post" action="/app/stewardship/constituent/{{ row.CONSTITUENT_ID }}/task"><input type="hidden" name="csrf" value="{{ csrf_token }}"><input type="hidden" name="title" value="Review source constituent"><button class="button button-secondary button-small" type="submit">Create review task</button></form>
+  <details><summary>Record interaction</summary><form method="post" action="/app/stewardship/constituent/{{ row.CONSTITUENT_ID }}/note" class="stack-form compact-form"><input type="hidden" name="csrf" value="{{ csrf_token }}"><label>Interaction type<select name="interaction_type"><option value="call">Call</option><option value="email">Email</option><option value="visit">Visit</option><option value="meeting">Meeting</option><option value="other">Other</option></select></label><label>Date<input type="date" name="interaction_date"></label><label>Staff note<textarea name="note" rows="2" required></textarea></label><button class="button button-secondary button-small" type="submit">Save note</button></form></details>
+  {% set notes = notes_by_constituent.get(row.CONSTITUENT_ID, []) %}
+  {% if notes %}<details><summary>{{ notes|length }} staff notes</summary>{% for item in notes %}<div class="evidence-entry"><small>{{ item.source_reference }} · {{ item.source_name }}</small><p>{{ item.claim }}</p></div>{% endfor %}</details>{% endif %}
+ </td>
+</tr>{% endfor %}
+</tbody></table></div>
+{% else %}<p class="empty-state">No constituent profile rows are available in the source folder.</p>{% endif %}
 </section>
+<div class="notice notice-warn"><strong>Reconciliation matters</strong><p>Gift and interaction records are joined by exact CONSTITUENT_ID values. When an ID is absent from another file, Wai displays the missing match instead of creating a donor profile or attributing activity to the wrong person.</p></div>
+{% endblock %}
