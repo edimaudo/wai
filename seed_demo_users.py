@@ -59,8 +59,8 @@ def main() -> None:
     if settings.is_production and os.getenv("ALLOW_PRODUCTION_DEMO_SEED", "").lower() != "true":
         raise SystemExit("Refusing to seed demo users in production without ALLOW_PRODUCTION_DEMO_SEED=true.")
 
-    admin_email = os.getenv("DEMO_ADMIN_EMAIL", "admin@wai-intelligence.test").strip().lower()
-    staff_email = os.getenv("DEMO_STAFF_EMAIL", "staff@wai-intelligence.test").strip().lower()
+    admin_email = os.getenv("DEMO_ADMIN_EMAIL", "admin@wai-intelligence.ca").strip().lower()
+    staff_email = os.getenv("DEMO_STAFF_EMAIL", "staff@wai-intelligence.ca").strip().lower()
     admin_password = os.getenv("DEMO_ADMIN_PASSWORD") or secrets.token_urlsafe(20)
     staff_password = os.getenv("DEMO_STAFF_PASSWORD") or secrets.token_urlsafe(20)
 
