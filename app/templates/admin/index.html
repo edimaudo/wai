@@ -1,9 +1,8 @@
 {% extends "base.html" %}
 {% block title %}{{ t('administration') }} | {{ app_name }}{% endblock %}
 {% block content %}
-<div class="page-heading-row"><div><h1>{{ t('administration') }}</h1><p class="page-intro">{{ t("manage_admin_copy") }}</p></div><span class="status-chip status-info">{{ t("administrator") }}</span></div>
+<div class="page-heading-row"><div><h1>{{ t('administration') }}</h1><p class="page-intro">{{ t("open_data_management") }}</p></div></div>
 <section class="admin-card-grid">
-  <a class="admin-card" href="/app/admin/access"><h2>{{ t('access') }}</h2><p>{{ t("access_admin_copy") }}</p><span class="text-link">{{ t("manage_users") }} →</span></a>
   <a class="admin-card" href="/app/admin/data"><h2>{{ t('data') }}</h2><p>{{ t("data_admin_copy") }}</p><span class="text-link">{{ t("manage_data") }} →</span></a>
   <article class="admin-card"><h2>{{ t("funding_sources") }}</h2><p>{{ t("funding_sources_copy") }}</p><span class="status-chip status-neutral">{{ t("next_build_stage") }}</span></article>
   <article class="admin-card"><h2>{{ t("assessment_criteria") }}</h2><p>{{ t("assessment_criteria_copy") }}</p><span class="status-chip status-neutral">{{ t("next_build_stage") }}</span></article>

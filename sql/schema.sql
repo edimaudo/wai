@@ -16,23 +16,20 @@ $$;
 
 create table if not exists public.profiles (
   id uuid primary key default gen_random_uuid(),
-  email text not null unique,
-  password_hash text,
   full_name text,
-  role text not null default 'staff' check (role in ('admin', 'staff')),
-  is_active boolean not null default true,
-  language text not null default 'en-CA' check (language in ('en-CA', 'fr-CA')),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
--- Remove the previous Supabase Auth dependency and add local demo-password storage.
+-- Remove legacy account and password fields; profile IDs remain as optional workflow attribution references.
 alter table public.profiles drop constraint if exists profiles_id_fkey;
+alter table public.profiles drop column if exists email;
+alter table public.profiles drop column if exists password_hash;
+alter table public.profiles drop column if exists role;
+alter table public.profiles drop column if exists is_active;
+alter table public.profiles drop column if exists language;
 alter table public.profiles alter column id set default gen_random_uuid();
-alter table public.profiles add column if not exists password_hash text;
 
-drop trigger if exists on_auth_user_created_wai on auth.users;
-drop function if exists public.handle_new_auth_user();
 
 create table if not exists public.data_imports (
   id uuid primary key default gen_random_uuid(),
@@ -494,9 +491,8 @@ begin
 end;
 $$;
 
--- This application authenticates demo users in FastAPI. Browser clients do not
--- access Supabase directly; all database access is performed by the server-side
--- service-role client after FastAPI validates the signed application session.
+-- The open-access demonstration application uses a server-side Supabase client.
+-- No application accounts or role-based access checks are used.
 do $$
 declare
   policy_row record;

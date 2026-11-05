@@ -1,66 +1,35 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from app.config import settings
 from app.i18n import get_translation
-from app.security import (
-    AuthenticatedUser,
-    clear_session_cookies,
-    csrf_is_valid,
-    get_current_user,
-    new_csrf_token,
-    require_admin,
-    safe_user_context,
-    set_session_cookies,
-    hash_password,
-    verify_password,
-)
+from app.security import csrf_is_valid, new_csrf_token
 from app.services.csv_ingestion import import_recognized_files, scan_data_folder
 from app.services.modules import MODULES
-from app.supabase_client import SupabaseNotConfigured, get_service_client
+from app.supabase_client import get_service_client
 from app.templates import templates
 
 router = APIRouter()
 
 
-def render(
-    request: Request,
-    template_name: str,
-    *,
-    context: dict[str, Any] | None = None,
-    user: AuthenticatedUser | None = None,
-    status_code: int = 200,
-) -> HTMLResponse:
+def render(request: Request, template_name: str, *, context: dict[str, Any] | None = None, status_code: int = 200) -> HTMLResponse:
     csrf_token = request.cookies.get("wai_csrf") or new_csrf_token()
-    language = request.cookies.get("wai_language") or (user.language if user else "en-CA")
-    translate = get_translation(language)
+    language = request.cookies.get("wai_language") or "en-CA"
     payload: dict[str, Any] = {
         "request": request,
-        "current_user": safe_user_context(user),
         "language": language,
-        "t": translate,
+        "t": get_translation(language),
         "csrf_token": csrf_token,
         "app_name": settings.app_name,
     }
     if context:
         payload.update(context)
-    response = templates.TemplateResponse(
-        request=request,
-        name=template_name,
-        context=payload,
-        status_code=status_code,
-    )
+    response = templates.TemplateResponse(request=request, name=template_name, context=payload, status_code=status_code)
     if not request.cookies.get("wai_csrf"):
-        response.set_cookie(
-            "wai_csrf",
-            csrf_token,
-            httponly=False,
-            secure=settings.app_session_cookie_secure or settings.is_production,
-            samesite="lax",
-            path="/",
-        )
+        response.set_cookie("wai_csrf", csrf_token, httponly=False,
+            secure=settings.is_production, samesite="lax", path="/")
     return response
 
 
@@ -73,11 +42,7 @@ def _get_data_counts() -> dict[str, int | None]:
     counts: dict[str, int | None] = {}
     try:
         client = get_service_client()
-        for table, key in [
-            ("gift_transactions", "gifts"),
-            ("crm_interactions", "interactions"),
-            ("video_email_events", "video_events"),
-        ]:
+        for table, key in [("gift_transactions", "gifts"), ("crm_interactions", "interactions"), ("video_email_events", "video_events")]:
             result = client.table(table).select("id", count="exact").limit(1).execute()
             counts[key] = result.count or 0
     except Exception:
@@ -85,311 +50,113 @@ def _get_data_counts() -> dict[str, int | None]:
     return counts
 
 
-@router.get("/", response_class=HTMLResponse, name="landing")
-async def landing(request: Request):
-    return render(request, "landing.html")
-
-
-@router.get("/login", response_class=HTMLResponse, name="login")
-async def login_page(request: Request):
-    if request.cookies.get("wai_session"):
-        return RedirectResponse("/app", status_code=303)
-    message = None
-    if request.query_params.get("expired"):
-        message = get_translation(request.cookies.get("wai_language") or "en-CA")("session_expired_message")
-    elif request.query_params.get("access") == "revoked":
-        message = get_translation(request.cookies.get("wai_language") or "en-CA")("revoked_access_message")
-    return render(request, "auth/login.html", context={"message": message})
-
-
-@router.post("/login", name="login_submit")
-async def login_submit(request: Request, email: str = Form(...), password: str = Form(...), csrf_token: str = Form(...)):
-    _check_csrf(request, csrf_token)
-    try:
-        normalized_email = email.strip().lower()
-        result = (
-            get_service_client().table("profiles")
-            .select("id,email,role,is_active,language,password_hash")
-            .eq("email", normalized_email)
-            .limit(1)
-            .execute()
-        )
-        profile = result.data[0] if result.data else None
-        if not profile or not profile.get("is_active") or not verify_password(password, profile.get("password_hash")):
-            return render(
-                request,
-                "auth/login.html",
-                context={"message": get_translation(request.cookies.get("wai_language") or "en-CA")("signin_failed_message")},
-                status_code=401,
-            )
-
-        response = RedirectResponse("/app", status_code=303)
-        set_session_cookies(response, str(profile["id"]))
-        response.set_cookie(
-            "wai_language",
-            profile.get("language") or "en-CA",
-            max_age=60 * 60 * 24 * 365,
-            httponly=False,
-            secure=settings.app_session_cookie_secure or settings.is_production,
-            samesite="lax",
-            path="/",
-        )
-        return response
-    except SupabaseNotConfigured:
-        return render(request, "auth/login.html", context={"message": get_translation(request.cookies.get("wai_language") or "en-CA")("supabase_signin_unavailable")}, status_code=503)
-    except Exception:
-        import logging
-        logging.getLogger("wai-intelligence").exception("Demo account sign-in failed")
-        return render(request, "auth/login.html", context={"message": get_translation(request.cookies.get("wai_language") or "en-CA")("supabase_signin_unavailable")}, status_code=503)
-
-
-@router.post("/logout", name="logout")
-async def logout(request: Request, csrf_token: str = Form(...)):
-    _check_csrf(request, csrf_token)
-    response = RedirectResponse("/", status_code=303)
-    clear_session_cookies(response)
-    return response
+@router.get("/", include_in_schema=False)
+async def landing():
+    return RedirectResponse("/app", status_code=307)
 
 
 @router.post("/language", name="public_language")
-async def public_language(request: Request, language: str = Form(...), next_path: str = Form("/"), csrf_token: str = Form(...)):
-    _check_csrf(request, csrf_token)
-    if language not in {"en-CA", "fr-CA"}:
-        raise HTTPException(status_code=400, detail="Unsupported language.")
-    if (
-        not next_path.startswith("/")
-        or next_path.startswith("//")
-        or "\\" in next_path
-        or "://" in next_path
-        or "\r" in next_path
-        or "\n" in next_path
-    ):
-        next_path = "/"
-    response = RedirectResponse(next_path, status_code=303)
-    response.set_cookie(
-        "wai_language", language, max_age=60 * 60 * 24 * 365, httponly=False,
-        secure=settings.app_session_cookie_secure or settings.is_production, samesite="lax", path="/",
-    )
-    return response
-
-
 @router.post("/preferences", name="preferences")
-async def update_preferences(
-    request: Request,
-    language: str = Form(...),
-    csrf_token: str = Form(...),
-    user: AuthenticatedUser = Depends(get_current_user),
-):
+async def update_language(request: Request, language: str = Form(...), next_path: str = Form("/app"), csrf_token: str = Form(...)):
     _check_csrf(request, csrf_token)
     if language not in {"en-CA", "fr-CA"}:
         raise HTTPException(status_code=400, detail="Unsupported language.")
-    response = RedirectResponse("/app", status_code=303)
-    response.set_cookie(
-        "wai_language",
-        language,
-        max_age=60 * 60 * 24 * 365,
-        httponly=False,
-        secure=settings.app_session_cookie_secure or settings.is_production,
-        samesite="lax",
-        path="/",
-    )
-    try:
-        service = get_service_client()
-        service.table("profiles").update({"language": language}).eq("id", user.id).execute()
-    except Exception:
-        # Language remains available in the browser cookie if profile persistence is unavailable.
-        pass
+    if not next_path.startswith("/") or next_path.startswith("//") or "\\" in next_path or "://" in next_path or "\r" in next_path or "\n" in next_path:
+        next_path = "/app"
+    response = RedirectResponse(next_path, status_code=303)
+    response.set_cookie("wai_language", language, max_age=60 * 60 * 24 * 365, httponly=False,
+        secure=settings.is_production, samesite="lax", path="/")
     return response
 
 
 @router.get("/app", response_class=HTMLResponse, name="dashboard")
-async def dashboard(request: Request, user: AuthenticatedUser = Depends(get_current_user)):
+async def dashboard(request: Request):
     counts = _get_data_counts()
     recent_imports: list[dict[str, Any]] = []
     try:
-        client = get_service_client()
-        result = (
-            client.table("data_imports")
-            .select("dataset_key,source_file,records_loaded,records_rejected,status,created_at")
-            .order("created_at", desc=True)
-            .limit(5)
-            .execute()
-        )
+        result = get_service_client().table("data_imports").select(
+            "dataset_key,source_file,records_loaded,records_rejected,status,created_at"
+        ).order("created_at", desc=True).limit(5).execute()
         recent_imports = result.data or []
     except Exception:
         pass
-    return render(request, "dashboard/index.html", user=user, context={"counts": counts, "recent_imports": recent_imports, "modules": MODULES})
+    return render(request, "dashboard/index.html", context={"counts": counts, "recent_imports": recent_imports, "modules": MODULES})
+
+
+def _module_page(request: Request, key: str, extra: dict[str, Any] | None = None):
+    context: dict[str, Any] = {"module": MODULES[key], "module_key": key}
+    if extra:
+        context.update(extra)
+    return render(request, f"{key}/index.html", context=context)
 
 
 @router.get("/app/funding", response_class=HTMLResponse, name="funding")
-async def funding_page(request: Request, user: AuthenticatedUser = Depends(get_current_user)):
-    return _module_page(request, user, "funding")
+async def funding_page(request: Request):
+    return _module_page(request, "funding")
 
 
 @router.get("/app/reporting", response_class=HTMLResponse, name="reporting")
-async def reporting_page(request: Request, user: AuthenticatedUser = Depends(get_current_user)):
-    counts = _get_data_counts()
-    return _module_page(request, user, "reporting", extra={"counts": counts})
+async def reporting_page(request: Request):
+    return _module_page(request, "reporting", extra={"counts": _get_data_counts()})
 
 
 @router.get("/app/donors", response_class=HTMLResponse, name="donors")
-async def donors_page(request: Request, user: AuthenticatedUser = Depends(get_current_user)):
-    return _module_page(request, user, "donors")
+async def donors_page(request: Request):
+    return _module_page(request, "donors")
 
 
 @router.get("/app/partnerships", response_class=HTMLResponse, name="partnerships")
-async def partnerships_page(request: Request, user: AuthenticatedUser = Depends(get_current_user)):
-    return _module_page(request, user, "partnerships")
+async def partnerships_page(request: Request):
+    return _module_page(request, "partnerships")
 
 
 @router.get("/app/grants", response_class=HTMLResponse, name="grants")
-async def grants_page(request: Request, user: AuthenticatedUser = Depends(get_current_user)):
-    return _module_page(request, user, "grants")
-
-
-def _module_page(request: Request, user: AuthenticatedUser, key: str, extra: dict[str, Any] | None = None):
-    module = MODULES[key]
-    context: dict[str, Any] = {"module": module, "module_key": key}
-    if extra:
-        context.update(extra)
-    return render(request, f"{key}/index.html", user=user, context=context)
+async def grants_page(request: Request):
+    return _module_page(request, "grants")
 
 
 @router.get("/app/reviews", response_class=HTMLResponse, name="reviews")
-async def reviews_page(request: Request, user: AuthenticatedUser = Depends(get_current_user)):
+async def reviews_page(request: Request):
     records: list[dict[str, Any]] = []
     try:
-        client = get_service_client()
-        result = (
-            client.table("approval_records")
-            .select("id,subject,decision_type,status,created_at")
-            .eq("status", "pending")
-            .order("created_at", desc=True)
-            .limit(50)
-            .execute()
-        )
+        result = get_service_client().table("approval_records").select(
+            "id,subject,decision_type,status,created_at"
+        ).eq("status", "pending").order("created_at", desc=True).limit(50).execute()
         records = result.data or []
     except Exception:
         pass
-    return render(request, "dashboard/reviews.html", user=user, context={"records": records})
+    return render(request, "dashboard/reviews.html", context={"records": records})
 
 
 @router.get("/app/admin", response_class=HTMLResponse, name="admin")
-async def admin_dashboard(request: Request, user: AuthenticatedUser = Depends(require_admin)):
-    scan = scan_data_folder()
-    return render(request, "admin/index.html", user=user, context={"scan": scan})
-
-
-@router.get("/app/admin/access", response_class=HTMLResponse, name="admin_access")
-async def admin_access(request: Request, user: AuthenticatedUser = Depends(require_admin)):
-    people: list[dict[str, Any]] = []
-    try:
-        result = get_service_client().table("profiles").select("id,email,full_name,role,is_active,created_at").order("created_at").execute()
-        people = result.data or []
-    except Exception:
-        pass
-    return render(request, "admin/access.html", user=user, context={"people": people})
-
-
-@router.post("/app/admin/access/create", name="admin_create_user")
-async def admin_create_user(
-    request: Request,
-    email: str = Form(...),
-    full_name: str = Form(...),
-    password: str = Form(...),
-    csrf_token: str = Form(...),
-    user: AuthenticatedUser = Depends(require_admin),
-):
-    _check_csrf(request, csrf_token)
-    email = email.strip().lower()
-    full_name = full_name.strip()
-    if len(password) < 12:
-        raise HTTPException(status_code=400, detail="password_minimum")
-    if not email or not full_name:
-        raise HTTPException(status_code=400, detail="required_user_fields")
-    service = get_service_client()
-    created = service.table("profiles").insert({
-        "email": email,
-        "full_name": full_name,
-        "password_hash": hash_password(password),
-        "role": "staff",
-        "is_active": True,
-    }).execute()
-    if not created.data:
-        raise HTTPException(status_code=500, detail="The demo account could not be created.")
-    profile_id = str(created.data[0]["id"])
-    service.table("audit_events").insert({
-        "actor_id": user.id,
-        "event_type": "user.created",
-        "entity_type": "profile",
-        "entity_id": profile_id,
-        "details": {"email": email, "role": "staff"},
-    }).execute()
-    return RedirectResponse("/app/admin/access?created=1", status_code=303)
-
-
-@router.post("/app/admin/access/{profile_id}/status", name="admin_update_access")
-async def admin_update_access(
-    profile_id: str,
-    request: Request,
-    is_active: bool = Form(...),
-    csrf_token: str = Form(...),
-    user: AuthenticatedUser = Depends(require_admin),
-):
-    _check_csrf(request, csrf_token)
-    if profile_id == user.id and not is_active:
-        raise HTTPException(status_code=400, detail="self_revoke")
-    service = get_service_client()
-    target = service.table("profiles").select("id,role,is_active").eq("id", profile_id).limit(1).execute().data
-    if not target:
-        raise HTTPException(status_code=404, detail="User not found.")
-    if target[0].get("role") == "admin" and not is_active:
-        active_admins = (
-            service.table("profiles").select("id", count="exact").eq("role", "admin").eq("is_active", True).execute().count
-            or 0
-        )
-        if active_admins <= 1:
-            raise HTTPException(status_code=400, detail="last_admin")
-    service.table("profiles").update({"is_active": is_active}).eq("id", profile_id).execute()
-    service.table("audit_events").insert({
-        "actor_id": user.id,
-        "event_type": "user.access_changed",
-        "entity_type": "profile",
-        "entity_id": profile_id,
-        "details": {"is_active": is_active},
-    }).execute()
-    return RedirectResponse("/app/admin/access", status_code=303)
+async def admin_dashboard(request: Request):
+    return render(request, "admin/index.html", context={"scan": scan_data_folder()})
 
 
 @router.get("/app/admin/data", response_class=HTMLResponse, name="admin_data")
-async def admin_data(request: Request, user: AuthenticatedUser = Depends(require_admin)):
-    scan = scan_data_folder()
+async def admin_data(request: Request):
     imports: list[dict[str, Any]] = []
     try:
-        result = (
-            get_service_client().table("data_imports")
-            .select("dataset_key,source_file,records_seen,records_loaded,records_rejected,status,created_at")
-            .order("created_at", desc=True)
-            .limit(30)
-            .execute()
-        )
+        result = get_service_client().table("data_imports").select(
+            "dataset_key,source_file,records_seen,records_loaded,records_rejected,status,created_at"
+        ).order("created_at", desc=True).limit(30).execute()
         imports = result.data or []
     except Exception:
         pass
-    return render(request, "admin/data.html", user=user, context={"scan": scan, "imports": imports})
+    return render(request, "admin/data.html", context={"scan": scan_data_folder(), "imports": imports})
 
 
 @router.post("/app/admin/data/import", name="admin_import_data")
-async def admin_import_data(request: Request, csrf_token: str = Form(...), user: AuthenticatedUser = Depends(require_admin)):
+async def admin_import_data(request: Request, csrf_token: str = Form(...)):
     _check_csrf(request, csrf_token)
     result = import_recognized_files()
     try:
         get_service_client().table("audit_events").insert({
-            "actor_id": user.id,
+            "actor_id": None,
             "event_type": "data.import_requested",
             "entity_type": "data_import",
             "details": result,
         }).execute()
     except Exception:
         pass
-    return render(request, "admin/data.html", user=user, context={"scan": scan_data_folder(), "imports": [], "import_result": result})
+    return render(request, "admin/data.html", context={"scan": scan_data_folder(), "imports": [], "import_result": result})

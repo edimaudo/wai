@@ -10,10 +10,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 class Settings(BaseSettings):
     app_name: str = "Wai Intelligence"
     app_env: str = "development"
-    app_secret_key: str = "change-this-before-deployment"
     app_base_url: str = "http://localhost:8000"
-    app_session_cookie_secure: bool = False
-    app_session_max_age_seconds: int = 3600
 
     supabase_url: str = ""
     supabase_service_role_key: str = ""
@@ -39,10 +36,6 @@ class Settings(BaseSettings):
     @property
     def supabase_configured(self) -> bool:
         return bool(self.supabase_url and self.supabase_service_role_key)
-
-    @property
-    def supabase_admin_configured(self) -> bool:
-        return self.supabase_configured
 
 
 @lru_cache(maxsize=1)

@@ -112,7 +112,6 @@ code { padding: .12rem .35rem; border-radius: .3rem; background: var(--surface-s
 .language-form { display: flex; align-items: center; margin: 0; }
 .language-control { display: inline-flex; min-width: 2.65rem; min-height: 2.35rem; align-items: center; justify-content: center; padding: .35rem .55rem; border: 1px solid var(--border); border-radius: .4rem; background: var(--surface) !important; color: var(--ink) !important; font-size: .78rem; font-weight: 700; }
 .language-form select.language-control { appearance: none; text-align: center; cursor: pointer; }
-.logout-form { margin: 0; }
 .page-content { width: 100%; max-width: 1440px; flex: 1; margin: 0 auto; padding: 2rem 2.1rem 3rem; }
 
 
@@ -126,7 +125,6 @@ code { padding: .12rem .35rem; border-radius: .3rem; background: var(--surface-s
 .public-access-tools { gap: 1.25rem; }
 .language-toggle { min-width: 2.65rem; min-height: 2.35rem; padding: .35rem .55rem; border: 1px solid var(--border); border-radius: .4rem; background: var(--surface); color: var(--ink); font-size: .78rem; font-weight: 700; }
 .language-toggle:hover { border-color: var(--wateraid-blue); background: var(--surface-soft); }
-.public-sign-in { min-width: 6.4rem; }
 .public-main { width: 100%; max-width: 1200px; flex: 1; margin: 0 auto; padding: 0 2rem; }
 
 .public-shell .text-link { font-size: .82rem; }
@@ -259,13 +257,6 @@ code { padding: .12rem .35rem; border-radius: .3rem; background: var(--surface-s
 .pillar-card h3 { margin: .65rem 0 .4rem; }
 .pillar-card p { margin-bottom: 0; color: var(--muted); font-size: .77rem; }
 
-.login-layout { display: grid; min-height: calc(100vh - 10rem); grid-template-columns: 1fr minmax(18rem, 25rem); align-items: center; gap: 4rem; padding: 4rem 0; }
-.login-intro { max-width: 34rem; }
-.login-intro .login-intro h1 { max-width: 28rem; font-size: clamp(2.1rem, 4vw, 3.2rem); }
-.login-intro p { max-width: 30rem; color: var(--muted); }
-.login-accent-line { width: 4rem; height: .25rem; margin: 1.5rem 0; border-radius: 1rem; background: var(--wateraid-blue); }
-.login-card { padding: 1.6rem; border: 1px solid var(--border); border-radius: .65rem; background: var(--surface); box-shadow: var(--shadow); }
-.login-security { margin: 1rem 0 0; padding-top: .85rem; border-top: 1px solid var(--border); color: var(--muted); font-size: .68rem; text-align: center; }
 
 .error-page { display: flex; min-height: 55vh; flex-direction: column; align-items: flex-start; justify-content: center; max-width: 36rem; margin: 0 auto; }
 .error-code { margin-bottom: .3rem; color: var(--wateraid-blue); font-size: 4rem; font-weight: 750; letter-spacing: -.08em; line-height: 1; }
@@ -291,7 +282,6 @@ code { padding: .12rem .35rem; border-radius: .3rem; background: var(--surface-s
   .page-content { padding: 1.5rem 1.2rem 2.4rem; }
 
   .landing-hero { padding-top: 2.5rem; }
-  .login-layout { grid-template-columns: 1fr; gap: 1.5rem; max-width: 36rem; }
   .module-overview-grid, .split-admin-layout { grid-template-columns: 1fr; }
 }
 @media (max-width: 600px) {
@@ -310,7 +300,6 @@ code { padding: .12rem .35rem; border-radius: .3rem; background: var(--surface-s
   .public-size-group .preference-caption { display: none; }
   .public-size-group { gap: .05rem; }
   .public-size-group .size-button { min-width: 1.7rem; }
-  .public-sign-in { min-width: auto; padding-inline: .75rem; }
   .landing-copy h1 { font-size: 2.65rem; }
   .page-heading-row { flex-direction: column; }
   .metric-grid, .metric-grid-3, .module-grid, .admin-card-grid { grid-template-columns: 1fr; }
@@ -324,7 +313,6 @@ code { padding: .12rem .35rem; border-radius: .3rem; background: var(--surface-s
   .panel { padding: .9rem; }
   .panel-action-row { align-items: flex-start; flex-direction: column; }
   .inventory-summary { flex-wrap: wrap; }
-  .login-layout { padding-top: 2.3rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

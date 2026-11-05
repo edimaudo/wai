@@ -31,7 +31,7 @@
     <article class="metric-card"><span class="metric-label">{{ t("crm_interactions") }}</span><strong class="metric-value">{{ counts.interactions if counts.interactions is not none else '—' }}</strong></article>
     <article class="metric-card"><span class="metric-label">{{ t("video_email_records") }}</span><strong class="metric-value">{{ counts.video_events if counts.video_events is not none else '—' }}</strong></article>
   </div>
-  {% if counts.gifts == 0 and counts.interactions == 0 and counts.video_events == 0 %}<p class="empty-state">{{ t('no_data') }} {% if current_user.is_admin %}<a href="/app/admin/data">{{ t("import_data") }}</a>.{% else %}{{ t("ask_admin_import") }}{% endif %}</p>{% endif %}
+  {% if counts.gifts == 0 and counts.interactions == 0 and counts.video_events == 0 %}<p class="empty-state">{{ t('no_data') }} <a href="/app/admin/data">{{ t("import_data") }}</a>.</p>{% endif %}
 </section>
 {% endif %}
 {% endblock %}
