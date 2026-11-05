@@ -50,9 +50,9 @@ def _get_data_counts() -> dict[str, int | None]:
     return counts
 
 
-@router.get("/", include_in_schema=False)
-async def landing():
-    return RedirectResponse("/app", status_code=307)
+@router.get("/", response_class=HTMLResponse, include_in_schema=False, name="landing")
+async def landing(request: Request):
+    return render(request, "landing/index.html", context={"modules": MODULES})
 
 
 @router.post("/language", name="public_language")
@@ -76,11 +76,11 @@ async def dashboard(request: Request):
     try:
         result = get_service_client().table("data_imports").select(
             "dataset_key,source_file,records_loaded,records_rejected,status,created_at"
-        ).order("created_at", desc=True).limit(5).execute()
+        ).order("created_at", desc=True).limit(8).execute()
         recent_imports = result.data or []
     except Exception:
         pass
-    return render(request, "dashboard/index.html", context={"counts": counts, "recent_imports": recent_imports, "modules": MODULES})
+    return render(request, "dashboard/index.html", context={"counts": counts, "recent_imports": recent_imports})
 
 
 def _module_page(request: Request, key: str, extra: dict[str, Any] | None = None):

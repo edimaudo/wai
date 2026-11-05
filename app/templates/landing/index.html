@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Wai Intelligence | {{ t('landing_title') }}{% endblock %}
+{% block content %}
+<section class="landing-hero">
+  <div class="landing-copy">
+    <p class="eyebrow">{{ t('landing_eyebrow') }}</p>
+    <h1>{{ t('landing_title') }}</h1>
+    <p class="landing-subhead">{{ t('landing_subtitle') }}</p>
+    <p class="landing-description">{{ t('landing_description') }}</p>
+    <a class="button button-primary landing-cta" href="/app">{{ t('landing_cta') }} <span aria-hidden="true">→</span></a>
+  </div>
+  <div class="landing-visual" aria-label="{{ t('landing_visual_alt') }}">
+    <div class="landing-visual-title">{{ t('landing_visual_title') }}</div>
+    <div class="landing-flow"><div class="landing-flow-node">{{ t('flow_frame') }}</div><span></span><div class="landing-flow-node">{{ t('flow_diagnose') }}</div><span></span><div class="landing-flow-node">{{ t('flow_explore') }}</div><span></span><div class="landing-flow-node">{{ t('flow_decide') }}</div><span></span><div class="landing-flow-node">{{ t('flow_act') }}</div></div>
+    <p>{{ t('landing_visual_note') }}</p>
+  </div>
+</section>
+<section class="landing-pillars">
+  <div class="section-heading"><p class="eyebrow">{{ t('pillars_eyebrow') }}</p><h2>{{ t('pillars_heading') }}</h2><p>{{ t('pillars_intro') }}</p></div>
+  <div class="pillar-grid">
+    {% for key, module in modules.items() %}
+    <article class="pillar-card"><span class="pillar-index">0{{ loop.index }}</span><h3>{{ t(module.title_key) }}</h3><p>{{ t(module.summary_key) }}</p><a href="{{ module.path }}">{{ t('explore_workflow') }} <span aria-hidden="true">→</span></a></article>
+    {% endfor %}
+  </div>
+</section>
+<section class="landing-bottom"><div><h2>{{ t('landing_bottom_title') }}</h2><p>{{ t('landing_bottom_copy') }}</p></div><a class="button button-primary" href="/app">{{ t('landing_cta') }} <span aria-hidden="true">→</span></a></section>
+{% endblock %}

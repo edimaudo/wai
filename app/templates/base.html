@@ -1,40 +1,19 @@
 <!doctype html>
 <html lang="{{ 'fr-CA' if language == 'fr-CA' else 'en-CA' }}" data-theme="light" data-font-size="medium">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#00AEEF">
   <title>{% block title %}{{ app_name }}{% endblock %}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="{{ url_for('static', path='css/app.css') }}?v=20261105-landing">
+  <link rel="stylesheet" href="{{ url_for('static', path='css/app.css') }}?v=20261105-carbon-revision">
   {% block head %}{% endblock %}
 </head>
 <body>
-<div class="app-shell">
-  <aside class="sidebar" aria-label="{{ t('nav_main') }}">
-    <a class="brand" href="/app" aria-label="Wai Intelligence dashboard"><span class="brand-copy"><strong>wai intelligence</strong></span></a>
-    <nav class="primary-nav">
-      <a class="nav-link {% if request.url.path == '/app' %}is-active{% endif %}" href="/app" data-short="D">{{ t('dashboard') }}</a>
-      <div class="nav-label">{{ t('nav_intelligence') }}</div>
-      <a class="nav-link {% if request.url.path.startswith('/app/funding') %}is-active{% endif %}" href="/app/funding" data-short="F">{{ t('funding') }}</a>
-      <a class="nav-link {% if request.url.path.startswith('/app/reporting') %}is-active{% endif %}" href="/app/reporting" data-short="R">{{ t('reporting') }}</a>
-      <a class="nav-link {% if request.url.path.startswith('/app/donors') %}is-active{% endif %}" href="/app/donors" data-short="D">{{ t('donors') }}</a>
-      <a class="nav-link {% if request.url.path.startswith('/app/partnerships') %}is-active{% endif %}" href="/app/partnerships" data-short="P">{{ t('partnerships') }}</a>
-      <a class="nav-link {% if request.url.path.startswith('/app/grants') %}is-active{% endif %}" href="/app/grants" data-short="G">{{ t('grants') }}</a>
-      <div class="nav-divider"></div>
-      <div class="nav-label">{{ t('nav_work_management') }}</div>
-      <a class="nav-link {% if request.url.path.startswith('/app/reviews') %}is-active{% endif %}" href="/app/reviews" data-short="Q">{{ t('reviews') }}</a>
-      <div class="nav-divider"></div>
-      <div class="nav-label">{{ t('administration')|upper }}</div>
-      <a class="nav-link {% if request.url.path == '/app/admin' %}is-active{% endif %}" href="/app/admin" data-short="A">{{ t('administration') }}</a>
-      <a class="nav-link {% if request.url.path.startswith('/app/admin/data') %}is-active{% endif %}" href="/app/admin/data" data-short="I">{{ t('data') }}</a>
-    </nav>
-  </aside>
-  <div class="main-column">
-    <header class="topbar">
-      <div class="topbar-context">{{ app_name }}</div>
+{% if request.url.path == '/' %}
+  <div class="public-shell">
+    <header class="public-header">
+      <a class="public-brand" href="/" aria-label="Wai Intelligence home">wai<span> intelligence</span></a>
       <div class="topbar-actions">
         <div class="preference-group" aria-label="{{ t('font_size') }}">
           <span class="preference-caption">A</span>
@@ -44,20 +23,43 @@
         </div>
         <button type="button" class="icon-button" id="theme-toggle" aria-label="{{ t('theme_toggle') }}" title="{{ t('theme_title') }}">◐</button>
         <form method="post" action="/preferences" class="language-form">
-          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-          <input type="hidden" name="next_path" value="{{ request.url.path }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="next_path" value="/">
           <label class="sr-only" for="language-select">{{ t('language') }}</label>
-          <select id="language-select" name="language" class="language-control">
-            <option value="en-CA" {% if language == 'en-CA' %}selected{% endif %}>EN</option>
-            <option value="fr-CA" {% if language == 'fr-CA' %}selected{% endif %}>FR</option>
-          </select>
+          <select id="language-select" name="language" class="language-control"><option value="en-CA" {% if language == 'en-CA' %}selected{% endif %}>EN</option><option value="fr-CA" {% if language == 'fr-CA' %}selected{% endif %}>FR</option></select>
         </form>
       </div>
     </header>
-    <main id="main-content" class="page-content">{% block content %}{% endblock %}</main>
-  </div>
-</div>
+{% else %}
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="{{ t('nav_main') }}">
+      <a class="brand" href="/app" aria-label="Wai Intelligence overview"><span class="brand-copy"><strong>wai intelligence</strong></span></a>
+      <nav class="primary-nav">
+        <a class="nav-link {% if request.url.path == '/app' %}is-active{% endif %}" href="/app" data-short="O">{{ t('dashboard') }}</a>
+        <div class="nav-label">{{ t('core_workflows') }}</div>
+        <a class="nav-link {% if request.url.path.startswith('/app/funding') %}is-active{% endif %}" href="/app/funding" data-short="F">{{ t('funding') }}</a>
+        <a class="nav-link {% if request.url.path.startswith('/app/reporting') %}is-active{% endif %}" href="/app/reporting" data-short="R">{{ t('reporting') }}</a>
+        <a class="nav-link {% if request.url.path.startswith('/app/donors') %}is-active{% endif %}" href="/app/donors" data-short="S">{{ t('donors') }}</a>
+        <a class="nav-link {% if request.url.path.startswith('/app/partnerships') %}is-active{% endif %}" href="/app/partnerships" data-short="P">{{ t('partnerships') }}</a>
+        <a class="nav-link {% if request.url.path.startswith('/app/grants') %}is-active{% endif %}" href="/app/grants" data-short="G">{{ t('grants') }}</a>
+      </nav>
+      <div class="sidebar-tools"><a class="nav-link {% if request.url.path.startswith('/app/admin/data') %}is-active{% endif %}" href="/app/admin/data" data-short="D">{{ t('data') }}</a></div>
+    </aside>
+    <div class="main-column">
+      <header class="topbar">
+        <div class="topbar-context">{% block page_context %}{% endblock %}</div>
+        <div class="topbar-actions">
+          <div class="preference-group" aria-label="{{ t('font_size') }}"><span class="preference-caption">A</span>
+            <button type="button" class="size-button" data-font-size="small" aria-label="{{ t('small_text') }}">S</button>
+            <button type="button" class="size-button" data-font-size="medium" aria-label="{{ t('medium_text') }}">M</button>
+            <button type="button" class="size-button" data-font-size="large" aria-label="{{ t('large_text') }}">L</button>
+          </div>
+          <button type="button" class="icon-button" id="theme-toggle" aria-label="{{ t('theme_toggle') }}" title="{{ t('theme_title') }}">◐</button>
+          <form method="post" action="/preferences" class="language-form"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="next_path" value="{{ request.url.path }}"><label class="sr-only" for="language-select">{{ t('language') }}</label><select id="language-select" name="language" class="language-control"><option value="en-CA" {% if language == 'en-CA' %}selected{% endif %}>EN</option><option value="fr-CA" {% if language == 'fr-CA' %}selected{% endif %}>FR</option></select></form>
+        </div>
+      </header>
+{% endif %}
+<main id="main-content" class="{{ 'landing-main' if request.url.path == '/' else 'page-content' }}">{% block content %}{% endblock %}</main>
+{% if request.url.path == '/' %}</div>{% else %}</div></div>{% endif %}
 <script src="{{ url_for('static', path='js/app.js') }}" defer></script>
 {% block scripts %}{% endblock %}
-</body>
-</html>
+</body></html>
