@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}{{ t(module.title_key) }} | {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-heading-row">
+  <div><h1>{{ t(module.title_key) }}</h1><p class="page-intro">{{ t(module.summary_key) }}</p></div>
+  <span class="status-chip status-info">{{ t('module_status') }}</span>
+</div>
+<section class="module-overview-grid">
+  <article class="panel module-overview-main">
+    
+    <h2>{{ t('module_foundation') }}</h2>
+    <p class="muted">{{ t('module_next') }}</p>
+    <div class="module-feature-list">
+      {% for feature in module.features %}<div class="module-feature"><span class="feature-check" aria-hidden="true">✓</span><span>{{ t(feature) }}</span></div>{% endfor %}
+    </div>
+  </article>
+  <aside class="panel module-overview-aside">
+    
+    <h3>{{ t("trace_claims") }}</h3>
+    <p>{{ t("evidence_future") }}</p>
+    <div class="mini-stat-row"><span>{{ t("source_links") }}</span><strong>{{ t("required") }}</strong></div>
+    <div class="mini-stat-row"><span>{{ t("human_approval") }}</span><strong>{{ t("required") }}</strong></div>
+    <div class="mini-stat-row"><span>{{ t("audit_history") }}</span><strong>{{ t("enabled_in_schema") }}</strong></div>
+  </aside>
+</section>
+{% if module_key == 'reporting' %}
+<section class="content-section">
+  <div class="section-heading-row"><div><h2>{{ t("available_reporting_records") }}</h2></div><a class="text-link" href="/app">{{ t("back_dashboard") }} →</a></div>
+  <div class="metric-grid metric-grid-3">
+    <article class="metric-card"><span class="metric-label">{{ t("gift_transactions") }}</span><strong class="metric-value">{{ counts.gifts if counts.gifts is not none else '—' }}</strong></article>
+    <article class="metric-card"><span class="metric-label">{{ t("crm_interactions") }}</span><strong class="metric-value">{{ counts.interactions if counts.interactions is not none else '—' }}</strong></article>
+    <article class="metric-card"><span class="metric-label">{{ t("video_email_records") }}</span><strong class="metric-value">{{ counts.video_events if counts.video_events is not none else '—' }}</strong></article>
+  </div>
+  {% if counts.gifts == 0 and counts.interactions == 0 and counts.video_events == 0 %}<p class="empty-state">{{ t('no_data') }} {% if current_user.is_admin %}<a href="/app/admin/data">{{ t("import_data") }}</a>.{% else %}{{ t("ask_admin_import") }}{% endif %}</p>{% endif %}
+</section>
+{% endif %}
+{% endblock %}

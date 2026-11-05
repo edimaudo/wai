@@ -1,0 +1,65 @@
+# Source column definitions. These definitions are deliberately explicit so the
+# reporting workflows do not silently assume the meaning of a field.
+
+gift_transactions:
+  source_file_pattern: "gift_transactions_table.csv"
+  table: gift_transactions
+  fields:
+    CONSTITUENT_ID:
+      meaning: Synthetic or approved constituent identifier.
+      type: string
+      required: true
+    GIFT_DATE:
+      meaning: Date the gift was recorded in the source.
+      type: date
+      required: true
+    AMOUNT:
+      meaning: Gift amount as recorded by the source, normalized to two decimal places using decimal arithmetic. Confirm currency and treatment of refunds before production reporting.
+      type: decimal
+      required: true
+
+crm_interactions:
+  source_file_pattern: "CRM_interacions_table.csv"
+  accepted_filename_variants:
+    - "CRM_interactions_table.csv"
+    - "crm_interactions_table.csv"
+  table: crm_interactions
+  fields:
+    CONSTITUENT_ID:
+      meaning: Synthetic or approved constituent identifier.
+      type: string
+      required: true
+    CRM_INTERACTION_DATE:
+      meaning: Date of the recorded CRM interaction.
+      type: date
+      required: true
+    CRM_INTERACTION_TYPE:
+      meaning: Interaction channel or type, as defined by the source system.
+      type: string
+      required: true
+
+video_email_data:
+  source_file_pattern: "video_email_data_table.csv"
+  table: video_email_events
+  fields:
+    CONSTITUENT_ID: {meaning: Synthetic or approved constituent identifier, type: string, required: true}
+    CONTACT_ID: {meaning: Source email/contact identifier, type: string, required: true}
+    SENT_DATE: {meaning: Date the email was sent, type: date, required: true}
+    OPENED_DATE: {meaning: Date an open was recorded, type: date, required: false}
+    STARTED_VIDEO_DATE: {meaning: Date a video start was recorded, type: date, required: false}
+    BOUNCED: {meaning: Whether the source marked the email as bounced, type: boolean, required: false}
+    UNSUBSCRIBED: {meaning: Whether the source marked the contact as unsubscribed, type: boolean, required: false}
+    CLICKS: {meaning: Click count as provided by the source; uniqueness is not established, type: integer, required: false}
+    VIDEO_VIEWS: {meaning: Video view count as provided by the source, type: integer, required: false}
+    STARTED_VIDEO: {meaning: Whether a video start was recorded, type: boolean, required: false}
+    WATCHED_VIDEO_25_PERCENT: {meaning: Whether the 25 percent milestone was recorded, type: boolean, required: false}
+    WATCHED_VIDEO_50_PERCENT: {meaning: Whether the 50 percent milestone was recorded, type: boolean, required: false}
+    WATCHED_VIDEO_75_PERCENT: {meaning: Whether the 75 percent milestone was recorded, type: boolean, required: false}
+    FINISHED_VIDEO: {meaning: Whether the completed-video milestone was recorded, type: boolean, required: false}
+    VIDEO_SHARES_TO_FACEBOOK: {meaning: Facebook share count as provided by the source, type: integer, required: false}
+
+important_notes:
+  - "NA" is treated as missing, not zero.
+  - Do not infer currency from the AMOUNT field; confirm it with the source owner.
+  - Reporting periods across the three supplied tables are not automatically comparable.
+  - Keep original source files unchanged and retain import hashes and history.

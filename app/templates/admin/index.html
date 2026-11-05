@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ t('administration') }} | {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-heading-row"><div><h1>{{ t('administration') }}</h1><p class="page-intro">{{ t("manage_admin_copy") }}</p></div><span class="status-chip status-info">{{ t("administrator") }}</span></div>
+<section class="admin-card-grid">
+  <a class="admin-card" href="/app/admin/access"><h2>{{ t('access') }}</h2><p>{{ t("access_admin_copy") }}</p><span class="text-link">{{ t("manage_users") }} →</span></a>
+  <a class="admin-card" href="/app/admin/data"><h2>{{ t('data') }}</h2><p>{{ t("data_admin_copy") }}</p><span class="text-link">{{ t("manage_data") }} →</span></a>
+  <article class="admin-card"><h2>{{ t("funding_sources") }}</h2><p>{{ t("funding_sources_copy") }}</p><span class="status-chip status-neutral">{{ t("next_build_stage") }}</span></article>
+  <article class="admin-card"><h2>{{ t("assessment_criteria") }}</h2><p>{{ t("assessment_criteria_copy") }}</p><span class="status-chip status-neutral">{{ t("next_build_stage") }}</span></article>
+</section>
+<section class="panel content-section">
+  <div class="panel-heading"><div><h2>{{ t("file_inventory") }}</h2></div><a class="text-link" href="/app/admin/data">{{ t("open_data_management") }} →</a></div>
+  <div class="inventory-summary"><strong>{{ scan.files|length }}</strong><span>{{ t("csv_detected") }}</span><strong>{{ scan.recognized_count }}</strong><span>{{ t("recognized_datasets") }}</span></div>
+  {% if scan.files %}<div class="table-wrap"><table class="data-table"><thead><tr><th>{{ t("file") }}</th><th>{{ t("dataset") }}</th><th>{{ t("recognition") }}</th><th>{{ t("size") }}</th></tr></thead><tbody>{% for file in scan.files %}<tr><td>{{ file.relative_path }}</td><td>{{ file.dataset or '—' }}</td><td>{{ t('recognized') if file.recognized else t('not_mapped') }}</td><td>{{ (file.size_bytes / 1024)|round(1) }} KB</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty-state">{{ t("data_folder_empty") }}</p>{% endif %}
+</section>
+{% endblock %}

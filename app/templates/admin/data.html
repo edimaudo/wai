@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}{{ t('data') }} | {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-heading-row"><div><h1>{{ t('data') }}</h1><p class="page-intro">{{ t('scan_help') }}</p></div><a class="button button-secondary" href="/app/admin">{{ t("administration_home") }}</a></div>
+{% if import_result %}
+<section class="panel import-result-panel"><h2>{{ t("validation_completed") }}</h2><p>{{ import_result.files_scanned }} {{ t("files_scanned") }} · {{ import_result.recognized_files }} {{ t("recognized_files") }}</p>
+  {% for item in import_result.results %}<div class="import-result-row"><strong>{{ item.file }}</strong><span class="status-chip {{ 'status-success' if item.status in ['completed','unchanged'] else 'status-warning' }}">{{ item.status }}</span><span>{{ item.records_loaded|default(0) }} {{ t("loaded") }}</span><span>{{ item.records_rejected|default(0) }} {{ t("rejected") }}</span>{% if item.message %}<small>{{ item.message }}</small>{% endif %}{% if item.errors %}<details><summary>{{ t("validation_details") }}</summary><ul>{% for error in item.errors %}<li>{{ error }}</li>{% endfor %}</ul></details>{% endif %}</div>{% endfor %}
+</section>
+{% endif %}
+<section class="panel">
+  <div class="panel-heading"><div><h2>{{ t('data_files') }}</h2></div><span class="status-chip status-neutral">{{ scan.recognized_count }} {{ t("recognized_count") }}</span></div>
+  <div class="path-callout"><span>DATA_DIR</span><code>{{ scan.root }}</code></div>
+  {% if scan.files %}<div class="table-wrap"><table class="data-table"><thead><tr><th>{{ t("file") }}</th><th>{{ t("dataset") }}</th><th>{{ t("recognition") }}</th><th>{{ t("size") }}</th><th>{{ t("last_modified") }}</th></tr></thead><tbody>{% for file in scan.files %}<tr><td>{{ file.relative_path }}</td><td>{{ file.dataset or t("not_mapped_label") }}</td><td>{{ t('yes') if file.recognized else t('no') }}</td><td>{{ (file.size_bytes / 1024)|round(1) }} KB</td><td>{{ file.modified_at }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<div class="empty-state"><strong>{{ t('no_files') }}</strong><p>{{ t("add_files") }}</p></div>{% endif %}
+  <div class="panel-action-row"><form method="post" action="/app/admin/data/import"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="button button-primary" {% if scan.recognized_count == 0 %}disabled{% endif %}>{{ t('scan_data') }}</button></form><p class="muted">{{ t("import_audit_note") }}</p></div>
+</section>
+<section class="panel content-section">
+  <div class="panel-heading"><div><h2>{{ t('imports') }}</h2></div></div>
+  {% if imports %}<div class="table-wrap"><table class="data-table"><thead><tr><th>{{ t("dataset") }}</th><th>{{ t("file") }}</th><th>{{ t("rows_seen") }}</th><th>{{ t("loaded_short") }}</th><th>{{ t("rejected_short") }}</th><th>{{ t("status") }}</th><th>{{ t("date") }}</th></tr></thead><tbody>{% for item in imports %}<tr><td>{{ item.dataset_key }}</td><td>{{ item.source_file }}</td><td>{{ item.records_seen }}</td><td>{{ item.records_loaded }}</td><td>{{ item.records_rejected }}</td><td>{{ item.status }}</td><td>{{ item.created_at }}</td></tr>{% endfor %}</tbody></table></div>{% else %}<p class="empty-state">{{ t("no_import_history") }}</p>{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ t('reviews') }} | {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-heading-row"><div><h1>{{ t('reviews') }}</h1><p class="page-intro">{{ t("review_evidence") }}</p></div></div>
+<section class="panel">
+  {% if records %}
+  <div class="table-wrap"><table class="data-table"><thead><tr><th>{{ t("subject") }}</th><th>{{ t("decision_type") }}</th><th>{{ t("status") }}</th><th>{{ t("created") }}</th></tr></thead><tbody>{% for item in records %}<tr><td>{{ item.subject }}</td><td>{{ item.decision_type }}</td><td>{{ item.status }}</td><td>{{ item.created_at }}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}<div class="empty-state"><span class="empty-state-mark" aria-hidden="true">✓</span><strong>{{ t("no_pending_reviews") }}</strong><p>{{ t("no_pending_reviews_copy") }}</p></div>{% endif %}
+</section>
+{% endblock %}

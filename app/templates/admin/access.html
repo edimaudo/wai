@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}{{ t('access') }} | {{ app_name }}{% endblock %}
+{% block content %}
+<div class="page-heading-row"><div><h1>{{ t('access') }}</h1><p class="page-intro">{{ t("new_account_copy") }}</p></div><a class="button button-secondary" href="/app/admin">{{ t("administration_home") }}</a></div>
+<section class="split-admin-layout">
+  <article class="panel">
+    <div class="panel-heading"><div><h2>{{ t('users') }}</h2></div><span class="status-chip status-neutral">{{ people|length }} {{ t("accounts") }}</span></div>
+    <div class="table-wrap"><table class="data-table"><thead><tr><th>{{ t("user") }}</th><th>{{ t("role") }}</th><th>{{ t("access") }}</th><th>{{ t("action") }}</th></tr></thead><tbody>
+      {% for person in people %}<tr><td><strong>{{ person.full_name or person.email }}</strong><small class="table-subtext">{{ person.email }}</small></td><td>{{ person.role }}</td><td><span class="status-chip {{ 'status-success' if person.is_active else 'status-danger' }}">{{ t('active') if person.is_active else t('inactive') }}</span></td><td>{% if person.id != current_user.id %}<form method="post" action="/app/admin/access/{{ person.id }}/status"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="is_active" value="{{ 'false' if person.is_active else 'true' }}"><button class="button button-small {{ 'button-danger-quiet' if person.is_active else 'button-secondary' }}" type="submit">{{ t('revoke') if person.is_active else t('grant') }}</button></form>{% else %}<span class="muted">{{ t("current_account") }}</span>{% endif %}</td></tr>{% else %}<tr><td colspan="4">{{ t("no_profiles") }}</td></tr>{% endfor %}
+    </tbody></table></div>
+  </article>
+  <aside class="panel create-user-panel">
+    <h2>{{ t('create_user') }}</h2><p class="muted">{{ t("new_account_staff_copy") }}</p>
+    <form method="post" action="/app/admin/access/create" class="form-stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="form-field"><label for="full_name">{{ t('full_name') }}</label><input id="full_name" name="full_name" required maxlength="120"></div>
+      <div class="form-field"><label for="new_email">{{ t('email') }}</label><input id="new_email" name="email" type="email" required maxlength="254"></div>
+      <div class="form-field"><label for="new_password">{{ t("temporary_password") }}</label><input id="new_password" name="password" type="password" required minlength="12" autocomplete="new-password"><small>{{ t("password_help") }}</small></div>
+      <button class="button button-primary button-full" type="submit">{{ t('create') }}</button>
+    </form>
+  </aside>
+</section>
+{% endblock %}

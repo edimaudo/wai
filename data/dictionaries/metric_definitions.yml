@@ -1,0 +1,32 @@
+# First-pass reporting metric definitions. Confirm definitions with WaterAid staff
+# before using these metrics in an external report.
+
+donations:
+  total_gifts:
+    formula: "SUM(gift_transactions.amount)"
+    caveats: ["Currency must be confirmed.", "Refund and reversal handling must be confirmed."]
+  gift_count:
+    formula: "COUNT(gift_transactions.id)"
+  average_gift:
+    formula: "SUM(amount) / COUNT(gifts)"
+
+rfm:
+  recency:
+    formula: "Days between the selected as-of date and the constituent's latest gift date."
+    direction: "Lower is more recent."
+  frequency:
+    formula: "Count of gifts in the configured analysis window."
+  monetary:
+    formula: "Sum of gift amounts in the configured analysis window."
+  note: "RFM thresholds and analysis window must be configurable and reviewed before use."
+
+video_email:
+  delivery_rate:
+    formula: "(Sent records - bounced records) / sent records"
+    caveat: "Confirm that one row represents one send and that sent records exclude test sends."
+  open_rate:
+    formula: "Records with opened_date / delivered records"
+    caveat: "Email privacy protections can affect open tracking."
+  video_completion_rate:
+    formula: "Records with finished_video true / delivered records"
+    caveat: "Confirm tracking definitions and whether video views are unique."
