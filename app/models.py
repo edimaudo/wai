@@ -1,10 +1,14 @@
 from datetime import datetime, date, timezone
-from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+
+from sqlalchemy import Boolean, Date, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from app.database import Base
+
 
 def utcnow():
     return datetime.now(timezone.utc)
+
 
 class User(Base):
     __tablename__ = "users"
@@ -15,6 +19,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(255))
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
 
 class Source(Base):
     __tablename__ = "sources"
@@ -33,6 +38,7 @@ class Source(Base):
     last_excerpt: Mapped[str] = mapped_column(Text, default="")
     changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
 
 class Opportunity(Base):
     __tablename__ = "opportunities"
@@ -58,6 +64,7 @@ class Opportunity(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     source = relationship("Source")
 
+
 class Donor(Base):
     __tablename__ = "donors"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -67,11 +74,13 @@ class Donor(Base):
     giving_summary: Mapped[str] = mapped_column(Text, default="")
     last_gift_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     last_interaction: Mapped[str] = mapped_column(Text, default="")
-    preferences: Mapped[str] = mapped_column(Text, default="Email preferred")
+    preferences: Mapped[str] = mapped_column(Text, default="")
     restrictions: Mapped[str] = mapped_column(Text, default="")
     open_follow_up: Mapped[str] = mapped_column(Text, default="")
     engagement_status: Mapped[str] = mapped_column(String(30), default="review")
-    synthetic: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Legacy marker retained for cleanup of older demo rows; production records default real.
+    synthetic: Mapped[bool] = mapped_column(Boolean, default=False)
+
 
 class ReportMetric(Base):
     __tablename__ = "report_metrics"
@@ -80,7 +89,8 @@ class ReportMetric(Base):
     metric: Mapped[str] = mapped_column(String(100), index=True)
     value: Mapped[float] = mapped_column(Float)
     definition: Mapped[str] = mapped_column(Text, default="")
-    source_label: Mapped[str] = mapped_column(String(160), default="Synthetic demonstration dataset")
+    source_label: Mapped[str] = mapped_column(String(160), default="Unspecified source")
+
 
 class PartnerCase(Base):
     __tablename__ = "partner_cases"
@@ -93,8 +103,13 @@ class PartnerCase(Base):
     findings: Mapped[str] = mapped_column(Text, default="")
     uncertainties: Mapped[str] = mapped_column(Text, default="")
     questions: Mapped[str] = mapped_column(Text, default="")
-    framework_note: Mapped[str] = mapped_column(Text, default="Demonstration criteria are assumptions pending an approved WaterAid framework.")
-    is_fictional: Mapped[bool] = mapped_column(Boolean, default=True)
+    framework_note: Mapped[str] = mapped_column(
+        Text,
+        default="Apply the approved organizational framework and confirm its current version before assessment.",
+    )
+    # Legacy marker retained for cleanup of earlier fabricated cases.
+    is_fictional: Mapped[bool] = mapped_column(Boolean, default=False)
+
 
 class Evidence(Base):
     __tablename__ = "evidence"
@@ -112,6 +127,7 @@ class Evidence(Base):
     caveat: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+
 class WorkTask(Base):
     __tablename__ = "work_tasks"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -126,6 +142,7 @@ class WorkTask(Base):
     created_by: Mapped[str] = mapped_column(String(80), default="system")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+
 class Feedback(Base):
     __tablename__ = "feedback"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -138,6 +155,7 @@ class Feedback(Base):
     reviewer: Mapped[str] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+
 class GrantProject(Base):
     __tablename__ = "grant_projects"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -148,6 +166,7 @@ class GrantProject(Base):
     status: Mapped[str] = mapped_column(String(40), default="active")
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+
 
 class GrantDocument(Base):
     __tablename__ = "grant_documents"
@@ -162,6 +181,7 @@ class GrantDocument(Base):
     uploaded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     project = relationship("GrantProject")
 
+
 class GrantObligation(Base):
     __tablename__ = "grant_obligations"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -174,6 +194,7 @@ class GrantObligation(Base):
     severity: Mapped[str] = mapped_column(String(30), default="medium")
     status: Mapped[str] = mapped_column(String(30), default="open")
     notes: Mapped[str] = mapped_column(Text, default="")
+
 
 class AppSetting(Base):
     __tablename__ = "app_settings"
@@ -193,5 +214,6 @@ class NetworkRelation(Base):
     source_url: Mapped[str] = mapped_column(Text, default="")
     confidence: Mapped[str] = mapped_column(String(40), default="unverified")
     status: Mapped[str] = mapped_column(String(40), default="to_verify")
-    synthetic: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Legacy marker retained for cleanup of earlier fabricated relationships.
+    synthetic: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
