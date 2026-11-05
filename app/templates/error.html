@@ -1,3 +1,0 @@
-{% extends 'base.html' %}
-{% block title %}{{ heading }} | Wai Intelligence{% endblock %}
-{% block content %}<section class="error-state"><div class="error-code">{{ status_code }}</div><h1>{{ heading }}</h1><p>{{ detail }}</p><a class="button button-primary" href="{{ '/app' if workspace else '/' }}">{{ t('back_dashboard') if workspace else t('home') }}</a></section>{% endblock %}
