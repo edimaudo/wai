@@ -3,15 +3,8 @@
 {% block content %}
 <section class="landing-hero landing-hero-compact">
   <div class="landing-copy">
+    <p class="landing-subhead">{{ t('landing_message') }}</p>
     <a class="button button-primary button-large" href="/login">{{ t('landing_cta') }} <span aria-hidden="true">→</span></a>
-  </div>
-  <div class="landing-visual" aria-label="{{ t('pillars_heading') }}">
-    <div class="visual-node node-funding"><strong>{{ t("funding_label") }}</strong></div>
-    <div class="visual-node node-reporting"><strong>{{ t("reporting_label") }}</strong></div>
-    <div class="visual-node node-donors"><strong>{{ t("donors_label") }}</strong></div>
-    <div class="visual-node node-partnerships"><strong>{{ t("partnerships_label") }}</strong></div>
-    <div class="visual-node node-grants"><strong>{{ t("grants_label") }}</strong></div>
-    <div class="visual-ring" aria-hidden="true"></div>
   </div>
 </section>
 <section class="landing-pillars">
