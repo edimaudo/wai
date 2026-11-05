@@ -1,16 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Wai Intelligence | {{ t('landing_headline') }}{% endblock %}
+{% block title %}Wai Intelligence | {{ t('pillars_heading') }}{% endblock %}
 {% block content %}
-<section class="landing-hero">
+<section class="landing-hero landing-hero-compact">
   <div class="landing-copy">
-    
-    <h1>{{ t('landing_headline') }}</h1>
-    <p class="landing-subhead">{{ t('landing_subhead') }}</p>
     <a class="button button-primary button-large" href="/login">{{ t('landing_cta') }} <span aria-hidden="true">→</span></a>
-    <p class="landing-caption">{{ t("landing_caption") }}</p>
   </div>
   <div class="landing-visual" aria-label="{{ t('pillars_heading') }}">
-    <div class="visual-core"><span class="visual-core-mark">W</span><strong>Wai Intelligence</strong><small>{{ t("shared_evidence_layer_label") }}</small></div>
     <div class="visual-node node-funding"><strong>{{ t("funding_label") }}</strong></div>
     <div class="visual-node node-reporting"><strong>{{ t("reporting_label") }}</strong></div>
     <div class="visual-node node-donors"><strong>{{ t("donors_label") }}</strong></div>
@@ -21,7 +16,6 @@
 </section>
 <section class="landing-pillars">
   <div class="section-heading">
-    
     <h2>{{ t('pillars_heading') }}</h2>
   </div>
   <div class="pillar-grid">
@@ -31,9 +25,5 @@
     <article class="pillar-card"><h3>{{ t('partnerships') }}</h3><p>{{ t("pillar_partnerships") }}</p></article>
     <article class="pillar-card"><h3>{{ t('grants') }}</h3><p>{{ t("pillar_grants") }}</p></article>
   </div>
-</section>
-<section class="landing-trust">
-  <div><h2>{{ t("trust_heading") }}</h2></div>
-  <p>{{ t("trust_copy") }}</p>
 </section>
 {% endblock %}

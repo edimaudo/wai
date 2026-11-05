@@ -16,8 +16,7 @@
 <div class="app-shell">
   <aside class="sidebar" aria-label="{{ t('nav_main') }}">
     <a class="brand" href="/app" aria-label="Wai Intelligence dashboard">
-      <span class="brand-mark" aria-hidden="true">W</span>
-      <span class="brand-copy"><strong>wai intelligence</strong><small>{{ t('brand_tagline') }}</small></span>
+      <span class="brand-copy"><strong>wai intelligence</strong></span>
     </a>
     <nav class="primary-nav">
       <a class="nav-link {% if request.url.path == '/app' %}is-active{% endif %}" href="/app" data-short="D">{{ t('dashboard') }}</a>
@@ -57,7 +56,7 @@
         <form method="post" action="/preferences" class="language-form">
           <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
           <label class="sr-only" for="language-select">{{ t('language') }}</label>
-          <select id="language-select" name="language">
+          <select id="language-select" name="language" class="language-control">
             <option value="en-CA" {% if language == 'en-CA' %}selected{% endif %}>EN</option>
             <option value="fr-CA" {% if language == 'fr-CA' %}selected{% endif %}>FR</option>
           </select>
@@ -72,24 +71,27 @@
 <div class="public-shell">
   <header class="public-header">
     <a class="brand brand-public" href="/" aria-label="Wai Intelligence home">
-      <span class="brand-mark" aria-hidden="true">W</span>
-      <span class="brand-copy"><strong>wai intelligence</strong><small>{{ t('brand_tagline') }}</small></span>
+      <span class="brand-copy"><strong>wai intelligence</strong></span>
     </a>
     <div class="public-header-actions">
-      <div class="preference-group public-size-group" aria-label="{{ t('font_size') }}">
-        <span class="preference-caption">A</span>
-        <button type="button" class="size-button" data-font-size="small" aria-label="{{ t('small_text') }}">S</button>
-        <button type="button" class="size-button" data-font-size="medium" aria-label="{{ t('medium_text') }}">M</button>
-        <button type="button" class="size-button" data-font-size="large" aria-label="{{ t('large_text') }}">L</button>
+      <div class="public-preference-tools">
+        <div class="preference-group public-size-group" aria-label="{{ t('font_size') }}">
+          <span class="preference-caption">A</span>
+          <button type="button" class="size-button" data-font-size="small" aria-label="{{ t('small_text') }}" title="{{ t('small_text') }}">S</button>
+          <button type="button" class="size-button" data-font-size="medium" aria-label="{{ t('medium_text') }}" title="{{ t('medium_text') }}">M</button>
+          <button type="button" class="size-button" data-font-size="large" aria-label="{{ t('large_text') }}" title="{{ t('large_text') }}">L</button>
+        </div>
+        <button type="button" class="icon-button" id="theme-toggle" aria-label="{{ t('theme_toggle') }}" title="{{ t('theme_title') }}">◐</button>
       </div>
-      <button type="button" class="icon-button" id="theme-toggle" aria-label="{{ t('theme_toggle') }}" title="{{ t('theme_title') }}">◐</button>
-      <form method="post" action="/language" class="language-form">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <input type="hidden" name="language" value="{{ 'fr-CA' if language == 'en-CA' else 'en-CA' }}">
-        <input type="hidden" name="next_path" value="{{ request.url.path }}">
-        <button type="submit" class="text-link">{{ 'FR' if language == 'en-CA' else 'EN' }}</button>
-      </form>
-      {% if request.url.path != '/login' %}<a class="button button-primary" href="/login">{{ t('sign_in') }}</a>{% endif %}
+      <div class="public-access-tools">
+        <form method="post" action="/language" class="language-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+          <input type="hidden" name="language" value="{{ 'fr-CA' if language == 'en-CA' else 'en-CA' }}">
+          <input type="hidden" name="next_path" value="{{ request.url.path }}">
+          <button type="submit" class="language-toggle language-control">{{ 'FR' if language == 'en-CA' else 'EN' }}</button>
+        </form>
+        {% if request.url.path != '/login' %}<a class="button button-primary public-sign-in" href="/login">{{ t('sign_in') }}</a>{% endif %}
+      </div>
     </div>
   </header>
 {% endif %}
@@ -97,11 +99,9 @@
     {% block content %}{% endblock %}
   </main>
 {% if current_user %}
-  <footer class="app-footer">{{ t('footer_note') }}</footer>
   </div>
 </div>
 {% else %}
-  <footer class="public-footer">{{ t('footer_note') }}</footer>
 </div>
 {% endif %}
 <script src="{{ url_for('static', path='js/app.js') }}" defer></script>
