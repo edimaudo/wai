@@ -15,8 +15,9 @@ end;
 $$;
 
 create table if not exists public.profiles (
-  id uuid primary key references auth.users(id) on delete cascade,
+  id uuid primary key default gen_random_uuid(),
   email text not null unique,
+  password_hash text,
   full_name text,
   role text not null default 'staff' check (role in ('admin', 'staff')),
   is_active boolean not null default true,
@@ -25,56 +26,13 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
-create or replace function public.is_active_user()
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select exists (
-    select 1 from public.profiles
-    where id = auth.uid() and is_active = true
-  );
-$$;
-
-create or replace function public.is_admin()
-returns boolean
-language sql
-stable
-security definer
-set search_path = public
-as $$
-  select exists (
-    select 1 from public.profiles
-    where id = auth.uid() and is_active = true and role = 'admin'
-  );
-$$;
-
-create or replace function public.handle_new_auth_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = public
-as $$
-begin
-  insert into public.profiles (id, email, full_name, role, is_active)
-  values (
-    new.id,
-    coalesce(new.email, ''),
-    coalesce(new.raw_user_meta_data->>'full_name', split_part(coalesce(new.email, ''), '@', 1)),
-    'staff',
-    true
-  )
-  on conflict (id) do nothing;
-  return new;
-end;
-$$;
+-- Remove the previous Supabase Auth dependency and add local demo-password storage.
+alter table public.profiles drop constraint if exists profiles_id_fkey;
+alter table public.profiles alter column id set default gen_random_uuid();
+alter table public.profiles add column if not exists password_hash text;
 
 drop trigger if exists on_auth_user_created_wai on auth.users;
-create trigger on_auth_user_created_wai
-after insert on auth.users
-for each row execute procedure public.handle_new_auth_user();
+drop function if exists public.handle_new_auth_user();
 
 create table if not exists public.data_imports (
   id uuid primary key default gen_random_uuid(),
@@ -536,70 +494,34 @@ begin
 end;
 $$;
 
--- Profile access: users can read their own profile and administrators can read all profiles.
--- Profile changes beyond a user's language preference are performed by audited FastAPI workflows.
-drop policy if exists profiles_read_self_or_admin on public.profiles;
-create policy profiles_read_self_or_admin on public.profiles
-for select to authenticated
-using (id = auth.uid() or public.is_admin());
-
-drop policy if exists profiles_update_self_language on public.profiles;
-create policy profiles_update_self_language on public.profiles
-for update to authenticated
-using (id = auth.uid() and public.is_active_user())
-with check (id = auth.uid() and public.is_active_user());
-
-drop policy if exists profiles_admin_update on public.profiles;
-
--- Staff with active accounts can read shared application data. Writes are performed by
--- reviewed server-side workflows using the service role, not directly from browser clients.
+-- This application authenticates demo users in FastAPI. Browser clients do not
+-- access Supabase directly; all database access is performed by the server-side
+-- service-role client after FastAPI validates the signed application session.
 do $$
 declare
-  table_name text;
+  policy_row record;
 begin
-  foreach table_name in array array[
-    'data_imports', 'gift_transactions', 'crm_interactions', 'video_email_events',
-    'organizations', 'people', 'relationship_edges', 'source_checks', 'source_documents',
-    'evidence_items', 'document_chunks', 'funding_opportunities', 'opportunity_assessments',
-    'donor_preferences', 'donor_notes', 'stewardship_tasks', 'reports', 'report_metrics',
-    'forecast_runs', 'partner_assessments', 'assessment_findings', 'proposals',
-    'proposal_versions', 'grants', 'grant_amendments', 'obligations', 'reviewer_feedback',
-    'approval_records'
-  ] loop
-    execute format('drop policy if exists active_staff_read on public.%I', table_name);
-    execute format('create policy active_staff_read on public.%I for select to authenticated using (public.is_active_user())', table_name);
+  for policy_row in
+    select schemaname, tablename, policyname
+    from pg_policies
+    where schemaname = 'public'
+  loop
+    execute format(
+      'drop policy if exists %I on %I.%I',
+      policy_row.policyname,
+      policy_row.schemaname,
+      policy_row.tablename
+    );
   end loop;
 end;
 $$;
 
--- Audit events are restricted to administrators; staff do not receive the system audit log.
-drop policy if exists audit_events_admin_read on public.audit_events;
-create policy audit_events_admin_read on public.audit_events
-for select to authenticated using (public.is_admin());
+drop function if exists public.is_active_user();
+drop function if exists public.is_admin();
 
--- Source registry can be viewed by active staff and managed by administrators.
-drop policy if exists source_registry_active_read on public.source_registry;
-create policy source_registry_active_read on public.source_registry
-for select to authenticated using (public.is_active_user());
-drop policy if exists source_registry_admin_manage on public.source_registry;
-create policy source_registry_admin_manage on public.source_registry
-for all to authenticated using (public.is_admin()) with check (public.is_admin());
-
--- No anonymous role is granted access to application records.
-revoke all on all tables in schema public from anon;
-grant select on all tables in schema public to authenticated;
-
--- Keep direct browser/database writes narrow. Application writes that require
--- elevated access are performed by audited FastAPI server workflows.
-revoke insert, update, delete on all tables in schema public from anon, authenticated;
-grant usage on schema public to authenticated, service_role;
-grant select on all tables in schema public to authenticated;
-revoke all on public.profiles from anon, authenticated;
-grant select on public.profiles to authenticated;
-grant update (language) on public.profiles to authenticated;
-
--- The FastAPI service-role client performs validated imports, account administration,
--- and audited writes. Keep this key exclusively on the application server.
+revoke all on all tables in schema public from anon, authenticated;
+revoke all on all sequences in schema public from anon, authenticated;
+grant usage on schema public to service_role;
 grant all privileges on all tables in schema public to service_role;
 grant all privileges on all sequences in schema public to service_role;
 alter default privileges in schema public grant all on tables to service_role;

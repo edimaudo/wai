@@ -1,4 +1,4 @@
-"""Create the two demonstration users in Supabase Auth and public.profiles.
+"""Create or reset the two Wai Intelligence demo accounts in public.profiles.
 
 Passwords are generated unless supplied through environment variables. The script
 writes them to .demo-credentials.txt, which is excluded from version control.
@@ -14,55 +14,42 @@ ROOT = Path(__file__).resolve().parents[1]
 load_dotenv(ROOT / ".env")
 
 from app.config import settings  # noqa: E402
+from app.security import hash_password  # noqa: E402
 from app.supabase_client import get_service_client  # noqa: E402
 
 
-def ensure_user(client, email: str, password: str, full_name: str, role: str):
-    admin_api = client.auth.admin
-    existing = None
-    try:
-        listed = admin_api.list_users()
-        users = getattr(listed, "users", None) or []
-        existing = next((item for item in users if (getattr(item, "email", "") or "").lower() == email.lower()), None)
-    except Exception:
-        existing = None
-
-    if existing:
-        user = admin_api.update_user_by_id(
-            str(existing.id),
-            {"password": password, "email_confirm": True, "user_metadata": {"full_name": full_name}},
-        ).user
-    else:
-        user = admin_api.create_user({
-            "email": email,
-            "password": password,
-            "email_confirm": True,
-            "user_metadata": {"full_name": full_name},
-        }).user
-
-    if not user:
-        raise RuntimeError(f"Supabase did not return a user for {email}.")
-
-    client.table("profiles").upsert({
-        "id": str(user.id),
+def ensure_user(client, email: str, password: str, full_name: str, role: str) -> str:
+    values = {
         "email": email,
         "full_name": full_name,
+        "password_hash": hash_password(password),
         "role": role,
         "is_active": True,
-    }).execute()
-    return str(user.id)
+    }
+    existing = (
+        client.table("profiles").select("id").eq("email", email).limit(1).execute().data
+    )
+    if existing:
+        profile_id = str(existing[0]["id"])
+        client.table("profiles").update(values).eq("id", profile_id).execute()
+    else:
+        created = client.table("profiles").insert(values).execute()
+        if not created.data:
+            raise RuntimeError(f"Could not create demo profile for {email}.")
+        profile_id = str(created.data[0]["id"])
+    return profile_id
 
 
 def main() -> None:
-    if not settings.supabase_admin_configured:
-        raise SystemExit("Set SUPABASE_URL, SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY first.")
+    if not settings.supabase_configured:
+        raise SystemExit("Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY first.")
     if settings.is_production and os.getenv("ALLOW_PRODUCTION_DEMO_SEED", "").lower() != "true":
         raise SystemExit("Refusing to seed demo users in production without ALLOW_PRODUCTION_DEMO_SEED=true.")
 
-    admin_email = os.getenv("DEMO_ADMIN_EMAIL", "admin@wai-intelligence.test").strip().lower()
-    staff_email = os.getenv("DEMO_STAFF_EMAIL", "staff@wai-intelligence.test").strip().lower()
-    admin_password = os.getenv("DEMO_ADMIN_PASSWORD") or secrets.token_urlsafe(20)
-    staff_password = os.getenv("DEMO_STAFF_PASSWORD") or secrets.token_urlsafe(20)
+    admin_email = os.getenv("DEMO_ADMIN_EMAIL", "admin@wai-intelligence.ca").strip().lower()
+    staff_email = os.getenv("DEMO_STAFF_EMAIL", "staff@wai-intelligence.ca").strip().lower()
+    admin_password = os.getenv("DEMO_ADMIN_PASSWORD") or secrets.token_urlsafe(16)
+    staff_password = os.getenv("DEMO_STAFF_PASSWORD") or secrets.token_urlsafe(16)
 
     client = get_service_client()
     ensure_user(client, admin_email, admin_password, "Wai Administrator", "admin")

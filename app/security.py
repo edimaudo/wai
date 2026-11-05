@@ -5,9 +5,10 @@ from dataclasses import dataclass
 from typing import Any
 
 from fastapi import Depends, HTTPException, Request, Response, status
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from app.config import settings
-from app.supabase_client import create_user_client, get_anon_client
+from app.supabase_client import SupabaseNotConfigured, get_service_client
 
 
 @dataclass(frozen=True)
@@ -18,48 +19,59 @@ class AuthenticatedUser:
     full_name: str
     language: str
     is_active: bool
-    access_token: str
 
     @property
     def is_admin(self) -> bool:
         return self.role == "admin"
 
 
-def _value(obj: Any, key: str, default: Any = None) -> Any:
-    if isinstance(obj, dict):
-        return obj.get(key, default)
-    return getattr(obj, key, default)
+def hash_password(password: str) -> str:
+    """Hash a demo-account password with scrypt and a unique random salt."""
+    salt = secrets.token_bytes(16)
+    derived = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=2**14, r=8, p=1, dklen=64)
+    return f"scrypt$16384$8$1${salt.hex()}${derived.hex()}"
 
 
-def set_session_cookies(response: Response, session: Any) -> None:
-    secure = settings.app_session_cookie_secure or settings.is_production
-    access_token = _value(session, "access_token")
-    refresh_token = _value(session, "refresh_token")
-    expires_in = int(_value(session, "expires_in", settings.app_session_max_age_seconds))
-    if not access_token or not refresh_token:
-        raise ValueError("Supabase did not return a complete authentication session.")
+def verify_password(password: str, encoded_hash: str | None) -> bool:
+    if not encoded_hash:
+        return False
+    try:
+        algorithm, n, r, p, salt_hex, digest_hex = encoded_hash.split("$")
+        if algorithm != "scrypt":
+            return False
+        actual = hashlib.scrypt(
+            password.encode("utf-8"),
+            salt=bytes.fromhex(salt_hex),
+            n=int(n),
+            r=int(r),
+            p=int(p),
+            dklen=len(bytes.fromhex(digest_hex)),
+        )
+        return hmac.compare_digest(actual.hex(), digest_hex)
+    except (ValueError, TypeError):
+        return False
 
+
+def _serializer() -> URLSafeTimedSerializer:
+    return URLSafeTimedSerializer(settings.app_secret_key, salt="wai-demo-session-v1")
+
+
+def set_session_cookies(response: Response, user_id: str) -> None:
+    token = _serializer().dumps({"uid": user_id})
     response.set_cookie(
-        "wai_access",
-        access_token,
-        max_age=min(expires_in, settings.app_session_max_age_seconds),
+        "wai_session",
+        token,
+        max_age=settings.app_session_max_age_seconds,
         httponly=True,
-        secure=secure,
-        samesite="lax",
-        path="/",
-    )
-    response.set_cookie(
-        "wai_refresh",
-        refresh_token,
-        max_age=60 * 60 * 24 * 30,
-        httponly=True,
-        secure=secure,
+        secure=settings.app_session_cookie_secure or settings.is_production,
         samesite="lax",
         path="/",
     )
 
 
 def clear_session_cookies(response: Response) -> None:
+    response.delete_cookie("wai_session", path="/")
+    # Clear cookies issued by the previous Supabase Auth implementation.
     response.delete_cookie("wai_access", path="/")
     response.delete_cookie("wai_refresh", path="/")
 
@@ -83,51 +95,30 @@ def csrf_is_valid(request: Request, submitted_token: str | None) -> bool:
 
 
 async def get_current_user(request: Request, response: Response) -> AuthenticatedUser:
-    access_token = request.cookies.get("wai_access")
-    refresh_token = request.cookies.get("wai_refresh")
-    if not access_token:
+    token = request.cookies.get("wai_session")
+    if not token:
         raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
 
-    if not settings.supabase_configured:
-        raise HTTPException(status_code=503, detail="Authentication service is not configured.")
-
-    auth_client = get_anon_client()
-    auth_user = None
     try:
-        auth_response = auth_client.auth.get_user(access_token)
-        auth_user = _value(auth_response, "user")
-    except Exception:
-        if not refresh_token:
-            raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login?expired=1"})
-        try:
-            refresh_response = auth_client.auth.refresh_session(refresh_token)
-            refreshed_session = _value(refresh_response, "session")
-            if not refreshed_session:
-                raise ValueError("No refreshed session returned.")
-            set_session_cookies(response, refreshed_session)
-            access_token = _value(refreshed_session, "access_token")
-            auth_response = auth_client.auth.get_user(access_token)
-            auth_user = _value(auth_response, "user")
-        except Exception:
-            clear_session_cookies(response)
-            raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login?expired=1"})
-
-    if not auth_user:
+        payload = _serializer().loads(token, max_age=settings.app_session_max_age_seconds)
+        user_id = str(payload.get("uid", ""))
+        if not user_id:
+            raise BadSignature("Missing user id")
+    except (BadSignature, SignatureExpired, AttributeError, TypeError):
         clear_session_cookies(response)
-        raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
+        raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login?expired=1"})
 
-    user_id = str(_value(auth_user, "id", ""))
-    email = str(_value(auth_user, "email", ""))
     try:
-        user_client = create_user_client(access_token)
         result = (
-            user_client.table("profiles")
+            get_service_client().table("profiles")
             .select("id,email,full_name,role,language,is_active")
             .eq("id", user_id)
             .limit(1)
             .execute()
         )
         profile = result.data[0] if result.data else None
+    except SupabaseNotConfigured as exc:
+        raise HTTPException(status_code=503, detail="Application database is not configured.") from exc
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Unable to verify application access.") from exc
 
@@ -135,6 +126,7 @@ async def get_current_user(request: Request, response: Response) -> Authenticate
         clear_session_cookies(response)
         raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login?access=revoked"})
 
+    email = str(profile.get("email") or "")
     user = AuthenticatedUser(
         id=user_id,
         email=email,
@@ -142,7 +134,6 @@ async def get_current_user(request: Request, response: Response) -> Authenticate
         full_name=profile.get("full_name") or email.split("@")[0],
         language=profile.get("language") or "en-CA",
         is_active=bool(profile.get("is_active")),
-        access_token=access_token,
     )
     request.state.current_user = user
     return user

@@ -14,10 +14,12 @@ from app.security import (
     require_admin,
     safe_user_context,
     set_session_cookies,
+    hash_password,
+    verify_password,
 )
 from app.services.csv_ingestion import import_recognized_files, scan_data_folder
 from app.services.modules import MODULES
-from app.supabase_client import SupabaseNotConfigured, create_user_client, get_anon_client, get_service_client
+from app.supabase_client import SupabaseNotConfigured, get_service_client
 from app.templates import templates
 
 router = APIRouter()
@@ -41,7 +43,6 @@ def render(
         "t": translate,
         "csrf_token": csrf_token,
         "app_name": settings.app_name,
-        "supabase_configured": settings.supabase_configured,
     }
     if context:
         payload.update(context)
@@ -68,10 +69,10 @@ def _check_csrf(request: Request, token: str | None) -> None:
         raise HTTPException(status_code=403, detail="csrf_invalid")
 
 
-def _get_data_counts(access_token: str) -> dict[str, int | None]:
+def _get_data_counts() -> dict[str, int | None]:
     counts: dict[str, int | None] = {}
     try:
-        client = create_user_client(access_token)
+        client = get_service_client()
         for table, key in [
             ("gift_transactions", "gifts"),
             ("crm_interactions", "interactions"),
@@ -91,7 +92,7 @@ async def landing(request: Request):
 
 @router.get("/login", response_class=HTMLResponse, name="login")
 async def login_page(request: Request):
-    if request.cookies.get("wai_access"):
+    if request.cookies.get("wai_session"):
         return RedirectResponse("/app", status_code=303)
     message = None
     if request.query_params.get("expired"):
@@ -104,40 +105,26 @@ async def login_page(request: Request):
 @router.post("/login", name="login_submit")
 async def login_submit(request: Request, email: str = Form(...), password: str = Form(...), csrf_token: str = Form(...)):
     _check_csrf(request, csrf_token)
-    if not settings.supabase_configured:
-        return render(request, "auth/login.html", context={"message": get_translation(request.cookies.get("wai_language") or "en-CA")("supabase_signin_unavailable")}, status_code=503)
-
     try:
-        client = get_anon_client()
-        auth_response = client.auth.sign_in_with_password({"email": email.strip().lower(), "password": password})
-        session = auth_response.session
-        auth_user = auth_response.user
-        if not session or not auth_user:
-            raise ValueError("Supabase did not return an authenticated session.")
-
-        user_client = create_user_client(session.access_token)
-        profile_result = (
-            user_client.table("profiles")
-            .select("id,role,is_active,language")
-            .eq("id", str(auth_user.id))
+        normalized_email = email.strip().lower()
+        result = (
+            get_service_client().table("profiles")
+            .select("id,email,role,is_active,language,password_hash")
+            .eq("email", normalized_email)
             .limit(1)
             .execute()
         )
-        profile = profile_result.data[0] if profile_result.data else None
-        if not profile or not profile.get("is_active", False):
-            try:
-                client.auth.sign_out()
-            except Exception:
-                pass
+        profile = result.data[0] if result.data else None
+        if not profile or not profile.get("is_active") or not verify_password(password, profile.get("password_hash")):
             return render(
                 request,
                 "auth/login.html",
-                context={"message": get_translation(request.cookies.get("wai_language") or "en-CA")("account_inactive_message")},
-                status_code=403,
+                context={"message": get_translation(request.cookies.get("wai_language") or "en-CA")("signin_failed_message")},
+                status_code=401,
             )
 
         response = RedirectResponse("/app", status_code=303)
-        set_session_cookies(response, session)
+        set_session_cookies(response, str(profile["id"]))
         response.set_cookie(
             "wai_language",
             profile.get("language") or "en-CA",
@@ -151,23 +138,15 @@ async def login_submit(request: Request, email: str = Form(...), password: str =
     except SupabaseNotConfigured:
         return render(request, "auth/login.html", context={"message": get_translation(request.cookies.get("wai_language") or "en-CA")("supabase_signin_unavailable")}, status_code=503)
     except Exception:
-        # Do not expose authentication provider errors or internal details to the browser.
-        return render(request, "auth/login.html", context={"message": get_translation(request.cookies.get("wai_language") or "en-CA")("signin_failed_message")}, status_code=401)
+        import logging
+        logging.getLogger("wai-intelligence").exception("Demo account sign-in failed")
+        return render(request, "auth/login.html", context={"message": get_translation(request.cookies.get("wai_language") or "en-CA")("supabase_signin_unavailable")}, status_code=503)
 
 
 @router.post("/logout", name="logout")
 async def logout(request: Request, csrf_token: str = Form(...)):
     _check_csrf(request, csrf_token)
-    access_token = request.cookies.get("wai_access")
-    refresh_token = request.cookies.get("wai_refresh")
     response = RedirectResponse("/", status_code=303)
-    if access_token and refresh_token and settings.supabase_configured:
-        try:
-            client = get_anon_client()
-            client.auth.set_session(access_token, refresh_token)
-            client.auth.sign_out()
-        except Exception:
-            pass
     clear_session_cookies(response)
     return response
 
@@ -225,10 +204,10 @@ async def update_preferences(
 
 @router.get("/app", response_class=HTMLResponse, name="dashboard")
 async def dashboard(request: Request, user: AuthenticatedUser = Depends(get_current_user)):
-    counts = _get_data_counts(user.access_token)
+    counts = _get_data_counts()
     recent_imports: list[dict[str, Any]] = []
     try:
-        client = create_user_client(user.access_token)
+        client = get_service_client()
         result = (
             client.table("data_imports")
             .select("dataset_key,source_file,records_loaded,records_rejected,status,created_at")
@@ -249,7 +228,7 @@ async def funding_page(request: Request, user: AuthenticatedUser = Depends(get_c
 
 @router.get("/app/reporting", response_class=HTMLResponse, name="reporting")
 async def reporting_page(request: Request, user: AuthenticatedUser = Depends(get_current_user)):
-    counts = _get_data_counts(user.access_token)
+    counts = _get_data_counts()
     return _module_page(request, user, "reporting", extra={"counts": counts})
 
 
@@ -280,7 +259,7 @@ def _module_page(request: Request, user: AuthenticatedUser, key: str, extra: dic
 async def reviews_page(request: Request, user: AuthenticatedUser = Depends(get_current_user)):
     records: list[dict[str, Any]] = []
     try:
-        client = create_user_client(user.access_token)
+        client = get_service_client()
         result = (
             client.table("approval_records")
             .select("id,subject,decision_type,status,created_at")
@@ -329,27 +308,21 @@ async def admin_create_user(
     if not email or not full_name:
         raise HTTPException(status_code=400, detail="required_user_fields")
     service = get_service_client()
-    result = service.auth.admin.create_user({
-        "email": email,
-        "password": password,
-        "email_confirm": True,
-        "user_metadata": {"full_name": full_name},
-    })
-    auth_user = result.user
-    if not auth_user:
-        raise HTTPException(status_code=500, detail="Supabase did not return the created user.")
-    service.table("profiles").upsert({
-        "id": str(auth_user.id),
+    created = service.table("profiles").insert({
         "email": email,
         "full_name": full_name,
+        "password_hash": hash_password(password),
         "role": "staff",
         "is_active": True,
     }).execute()
+    if not created.data:
+        raise HTTPException(status_code=500, detail="The demo account could not be created.")
+    profile_id = str(created.data[0]["id"])
     service.table("audit_events").insert({
         "actor_id": user.id,
         "event_type": "user.created",
         "entity_type": "profile",
-        "entity_id": str(auth_user.id),
+        "entity_id": profile_id,
         "details": {"email": email, "role": "staff"},
     }).execute()
     return RedirectResponse("/app/admin/access?created=1", status_code=303)

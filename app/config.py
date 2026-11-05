@@ -16,7 +16,6 @@ class Settings(BaseSettings):
     app_session_max_age_seconds: int = 3600
 
     supabase_url: str = ""
-    supabase_anon_key: str = ""
     supabase_service_role_key: str = ""
 
     gemini_api_key: str = ""
@@ -39,11 +38,11 @@ class Settings(BaseSettings):
 
     @property
     def supabase_configured(self) -> bool:
-        return bool(self.supabase_url and self.supabase_anon_key)
+        return bool(self.supabase_url and self.supabase_service_role_key)
 
     @property
     def supabase_admin_configured(self) -> bool:
-        return bool(self.supabase_configured and self.supabase_service_role_key)
+        return self.supabase_configured
 
 
 @lru_cache(maxsize=1)
