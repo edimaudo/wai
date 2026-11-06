@@ -6,6 +6,7 @@ business rules out of the templates and makes human review explicit.
 from __future__ import annotations
 
 import csv
+from functools import lru_cache
 import hashlib
 import ipaddress
 import json
@@ -48,21 +49,15 @@ SOURCE_REQUIRED_COLUMNS = {
 }
 
 
-def source_rows(table: str) -> list[dict[str, Any]]:
-    """Read approved source CSVs in place. Source files are never modified or copied."""
-    filename = SOURCE_TABLE_FILES.get(table)
-    if not filename:
-        return []
+@lru_cache(maxsize=8)
+def _cached_source_rows(filename: str, modified_ns: int, file_size: int) -> tuple[dict[str, Any], ...]:
+    """Parse each unchanged source CSV once per worker process."""
     path = (settings.data_dir / "source" / filename).resolve()
-    source_root = (settings.data_dir / "source").resolve()
-    if not path.is_relative_to(source_root):
-        raise WorkflowError("The configured source path is invalid.")
-    if not path.exists():
-        return []
     rows: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
         headers = set(reader.fieldnames or [])
+        table = next(key for key, value in SOURCE_TABLE_FILES.items() if value == filename)
         missing_columns = sorted(SOURCE_REQUIRED_COLUMNS[table] - headers)
         if missing_columns:
             raise WorkflowError(f"{filename} is missing required columns: {', '.join(missing_columns)}")
@@ -90,7 +85,22 @@ def source_rows(table: str) -> list[dict[str, Any]]:
                         row[key] = None
             row["source_file"] = filename
             rows.append(row)
-    return rows
+    return tuple(rows)
+
+
+def source_rows(table: str) -> list[dict[str, Any]]:
+    """Read approved source CSVs in place, using a stat-invalidated process cache."""
+    filename = SOURCE_TABLE_FILES.get(table)
+    if not filename:
+        return []
+    path = (settings.data_dir / "source" / filename).resolve()
+    source_root = (settings.data_dir / "source").resolve()
+    if not path.is_relative_to(source_root):
+        raise WorkflowError("The configured source path is invalid.")
+    if not path.exists():
+        return []
+    stat = path.stat()
+    return [dict(row) for row in _cached_source_rows(filename, stat.st_mtime_ns, stat.st_size)]
 
 
 def source_data_status() -> dict[str, Any]:
@@ -111,7 +121,7 @@ def source_data_status() -> dict[str, Any]:
 
 
 def all_rows(table: str, fields: str = "*", *, order: str | None = None, desc: bool = False,
-             page_size: int = 1000, maximum: int = 50000) -> list[dict[str, Any]]:
+             page_size: int = 1000, maximum: int = 1000) -> list[dict[str, Any]]:
     if table in SOURCE_TABLE_FILES:
         result = source_rows(table)
         if order:
@@ -694,7 +704,7 @@ def save_funding_decision(opportunity_id: str, decision: str, reason: str, langu
 # Reporting and decision intelligence
 # ---------------------------------------------------------------------------
 def reporting_analytics(period_start: str | None = None, period_end: str | None = None) -> dict[str, Any]:
-    start_date, end_date = parse_date(period_start), parse_date(period_end)
+    start_date, end_date = parse_date(period_start) or date(2015, 1, 1), parse_date(period_end)
     if start_date and end_date and start_date > end_date:
         raise WorkflowError("The reporting period start must be on or before the end date.")
     def within_period(value: Any) -> bool:
@@ -705,9 +715,12 @@ def reporting_analytics(period_start: str | None = None, period_end: str | None 
     gifts = [x for x in all_rows("gift_transactions", order="gift_date") if within_period(x.get("gift_date"))]
     interactions = [x for x in all_rows("crm_interactions", order="crm_interaction_date") if within_period(x.get("crm_interaction_date"))]
     events = [x for x in all_rows("video_email_events", order="sent_date") if within_period(x.get("sent_date"))]
-    monthly: dict[str, Decimal] = defaultdict(Decimal)
-    donor_amounts: dict[str, Decimal] = defaultdict(Decimal)
-    donor_counts: dict[str, int] = defaultdict(int)
+    monthly: dict[int, Decimal] = defaultdict(Decimal)
+    yearly: dict[int, Decimal] = defaultdict(Decimal)
+    weekdays: dict[int, Decimal] = defaultdict(Decimal)
+    donation_ids: set[str] = set()
+    missing_transaction_ids = 0
+    has_transaction_identifier = any(any(key in row and row.get(key) not in (None, "") for key in ("gift_id", "transaction_id", "gift_transaction_id")) for row in gifts)
     valid_gifts = 0
     rejected_gift_dates = 0
     for gift in gifts:
@@ -720,23 +733,30 @@ def reporting_analytics(period_start: str | None = None, period_end: str | None 
             rejected_gift_dates += 1
             continue
         valid_gifts += 1
-        month = gd.strftime("%Y-%m")
-        monthly[month] += amount
-        donor_amounts[str(gift.get("constituent_id"))] += amount
-        donor_counts[str(gift.get("constituent_id"))] += 1
-    series = [{"period": key, "value": float(value)} for key, value in sorted(monthly.items())]
-    current_total = sum(monthly.values(), Decimal("0"))
+        monthly[gd.month] += amount
+        yearly[gd.year] += amount
+        weekdays[gd.weekday()] += amount
+        transaction_id = gift.get("gift_id") or gift.get("transaction_id") or gift.get("gift_transaction_id")
+        if transaction_id not in (None, ""):
+            donation_ids.add(str(transaction_id))
+        else:
+            missing_transaction_ids += 1
+    month_labels = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+    weekday_labels = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    series = [{"period": month_labels[key - 1], "value": float(monthly.get(key, 0))} for key in range(1, 13)]
+    yearly_series = [{"period": str(key), "value": float(value)} for key, value in sorted(yearly.items())]
+    daily_series = [{"period": weekday_labels[key], "value": float(weekdays.get(key, 0))} for key in range(7)]
+    current_total = Decimal("0")
     prior_total = Decimal("0")
     change_pct = None
-    if len(series) >= 2:
-        current_total = Decimal(str(series[-1]["value"]))
-        prior_total = Decimal(str(series[-2]["value"]))
+    if len(yearly_series) >= 2:
+        current_total = Decimal(str(yearly_series[-1]["value"]))
+        prior_total = Decimal(str(yearly_series[-2]["value"]))
         change_pct = round(float((current_total - prior_total) / prior_total * 100), 1) if prior_total else None
     delivered = [x for x in events if x.get("bounced") is False]
     opened = [x for x in delivered if x.get("opened_date")]
     clicked = [x for x in delivered if int(x.get("clicks") or 0) > 0]
     video_started = [x for x in delivered if x.get("started_video") is True]
-    repeat_donors = sum(1 for count in donor_counts.values() if count > 1)
     gifts_total = sum((Decimal(str(x.get("amount"))) for x in gifts if x.get("amount") is not None), Decimal("0"))
     quality = {
         "gift_records": len(gifts), "valid_gifts": valid_gifts, "gift_dates_missing_or_invalid": rejected_gift_dates,
@@ -744,20 +764,20 @@ def reporting_analytics(period_start: str | None = None, period_end: str | None 
         "crm_interaction_records": len(interactions), "video_email_records": len(events),
         "delivered_email_records": len(delivered),
         "constituent_join_note": "Cross-source joins use exact CONSTITUENT_ID only; unmatched IDs are not fuzzy-matched.",
-        "currency_note": "The source export does not establish currency. Amounts are shown in source units until the data owner confirms currency.",
+        "date_coverage_start": "2015-01-01",
     }
     top_months = sorted(series, key=lambda x: x["value"], reverse=True)[:6]
     return {
         "gift_count": valid_gifts, "total_giving": float(gifts_total), "average_gift": float(gifts_total / valid_gifts) if valid_gifts else None,
-        "unique_donors": len(donor_amounts), "repeat_donors": repeat_donors,
-        "repeat_donor_rate": round(repeat_donors / len(donor_amounts) * 100, 1) if donor_amounts else None,
+        "unique_donations": len(donation_ids) + missing_transaction_ids if has_transaction_identifier else valid_gifts,
         "crm_interactions": len(interactions), "email_delivered": len(delivered),
         "email_open_rate": round(len(opened) / len(delivered) * 100, 1) if delivered else None,
         "email_click_rate": round(len(clicked) / len(delivered) * 100, 1) if delivered else None,
         "video_start_rate": round(len(video_started) / len(delivered) * 100, 1) if delivered else None,
-        "monthly_series": series, "top_months": top_months, "period_change_pct": change_pct,
-        "period_change_from": series[-2]["period"] if len(series) >= 2 else None,
-        "period_change_to": series[-1]["period"] if len(series) >= 2 else None,
+        "monthly_series": series, "yearly_series": yearly_series, "daily_series": daily_series,
+        "top_months": top_months, "period_change_pct": change_pct,
+        "period_change_from": yearly_series[-2]["period"] if len(yearly_series) >= 2 else None,
+        "period_change_to": yearly_series[-1]["period"] if len(yearly_series) >= 2 else None,
         "period_start": start_date.isoformat() if start_date else None,
         "period_end": end_date.isoformat() if end_date else None,
         "quality": quality,
@@ -776,6 +796,7 @@ def build_reporting_narrative(analytics: dict[str, Any], audience: str, purpose:
         "questions_for_staff, and data_limitations.\n" + json.dumps({"purpose": purpose, "analytics": analytics}, ensure_ascii=False)
     )
     raw = optional_gemini(prompt)
+    used_gemini = bool(raw)
     try:
         result = json.loads(raw) if raw else None
         if not isinstance(result, dict):
@@ -785,7 +806,7 @@ def build_reporting_narrative(analytics: dict[str, Any], audience: str, purpose:
     if result is None:
         if language == "fr-CA":
             summary = (f"Les données sources contiennent {analytics['gift_count']} transactions de dons valides, totalisant "
-                       f"{analytics['total_giving']:,.2f} unités sources pour {analytics['unique_donors']} identifiants de constituants distincts. "
+                       f"{analytics['total_giving']:,.2f} au total pour {analytics['unique_donations']} dons. "
                        f"{analytics['crm_interactions']} interactions CRM sont consignées.")
             result = {
                 "executive_summary": summary,
@@ -793,11 +814,11 @@ def build_reporting_narrative(analytics: dict[str, Any], audience: str, purpose:
                 "possible_explanations": "L’application n’attribue aucune cause. Le contexte du personnel est nécessaire.",
                 "risks_or_opportunities": "Examinez les dons récurrents et les mesures d’engagement uniquement lorsque la couverture des sources et les dénominateurs sont suffisants.",
                 "questions_for_staff": ["Y a-t-il eu des dons ponctuels ou affectés pendant la période?", "L’activité de campagne ou les définitions des mesures ont-elles changé?", "Quel contexte opérationnel doit accompagner ces chiffres?"],
-                "data_limitations": ["La devise n’est pas précisée dans les fichiers sources.", "Les rapprochements entre sources utilisent uniquement l’identifiant CONSTITUENT_ID exact."],
+                "data_limitations": ["Les rapprochements entre sources utilisent uniquement l’identifiant CONSTITUENT_ID exact."],
             }
         else:
             summary = (f"The source data contains {analytics['gift_count']} valid gift transactions totalling "
-                       f"{analytics['total_giving']:,.2f} source units across {analytics['unique_donors']} exact constituent IDs. "
+                       f"{analytics['total_giving']:,.2f} across {analytics['unique_donations']} donations. "
                        f"There are {analytics['crm_interactions']} recorded CRM interactions.")
             result = {
                 "executive_summary": summary,
@@ -805,11 +826,12 @@ def build_reporting_narrative(analytics: dict[str, Any], audience: str, purpose:
                 "possible_explanations": "No causal explanation is assigned by the application. Staff context is required.",
                 "risks_or_opportunities": "Review repeat giving and engagement measures only where source coverage and denominators are sufficient.",
                 "questions_for_staff": ["Were there one-time or restricted gifts in the period?", "Did campaign activity or data definitions change?", "What operational context should accompany these figures?"],
-                "data_limitations": [analytics["quality"]["currency_note"], analytics["quality"]["constituent_join_note"]],
+                "data_limitations": [analytics["quality"]["constituent_join_note"]],
             }
     result["audience"] = audience
     result["purpose"] = purpose
     result["status"] = "draft_requires_review"
+    result["generated_with_gemini"] = used_gemini
     return result
 
 
@@ -822,9 +844,9 @@ def save_report(title: str, audience: str, purpose: str, period_start: str | Non
         "language": language, "status": "draft", "narrative": narrative,
     })
     metrics = [
-        ("total_giving", "Total giving", analytics.get("total_giving"), "source units", "Sum of gift_transactions.amount"),
+        ("total_giving", "Total giving", analytics.get("total_giving"), "amount", "Sum of gift_transactions.amount"),
         ("gift_count", "Gift transactions", analytics.get("gift_count"), "records", "Count of valid gift transactions"),
-        ("unique_donors", "Unique constituent IDs", analytics.get("unique_donors"), "constituents", "Distinct exact CONSTITUENT_ID values in gifts"),
+        ("unique_donations", "Unique donations", analytics.get("unique_donations"), "donations", "Distinct source transaction IDs where provided; otherwise valid donation rows"),
         ("crm_interactions", "CRM interactions", analytics.get("crm_interactions"), "records", "Count of CRM interaction rows"),
     ]
     for key, label, value, unit, definition in metrics:
@@ -890,45 +912,106 @@ def record_report_correction(report_id: str, section: str, corrected_text: str,
     return updated
 
 
-def donor_workspace(search: str = "") -> list[dict[str, Any]]:
-    profiles = all_rows("constituent_profiles", order="constituent_id")
-    gifts = all_rows("gift_transactions", order="gift_date", desc=True)
-    interactions = all_rows("crm_interactions", order="crm_interaction_date", desc=True)
-    events = all_rows("video_email_events", order="sent_date", desc=True)
-    prefs = {x["constituent_id"]: x for x in all_rows("donor_preferences")}
-    notes = all_rows("donor_notes", order="created_at", desc=True)
+@lru_cache(maxsize=4)
+def _cached_donor_source_aggregate(fingerprint: tuple[tuple[str, int, int], ...]) -> tuple[dict[str, Any], ...]:
+    """Cache the expensive constituent/gift/CRM/event aggregation until a CSV changes."""
+    profiles = source_rows("constituent_profiles")
+    gifts = source_rows("gift_transactions")
+    interactions = source_rows("crm_interactions")
+    events = source_rows("video_email_events")
+    gifts.sort(key=lambda row: str(row.get("gift_date") or ""), reverse=True)
+    interactions.sort(key=lambda row: str(row.get("crm_interaction_date") or ""), reverse=True)
+    events.sort(key=lambda row: str(row.get("sent_date") or ""), reverse=True)
     gifts_by: dict[str, list[dict[str, Any]]] = defaultdict(list)
     interactions_by: dict[str, list[dict[str, Any]]] = defaultdict(list)
     events_by: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    notes_by: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in gifts: gifts_by[str(row.get("constituent_id"))].append(row)
-    for row in interactions: interactions_by[str(row.get("constituent_id"))].append(row)
-    for row in events: events_by[str(row.get("constituent_id"))].append(row)
-    for row in notes: notes_by[str(row.get("constituent_id"))].append(row)
-    # Preserve every constituent found in any supplied source file. The profile
-    # export is not guaranteed to contain a row for every transaction ID.
-    profile_ids = {str(row.get("constituent_id")) for row in profiles}
-    all_ids = profile_ids | set(gifts_by) | set(interactions_by) | set(events_by)
+    for row in gifts:
+        gifts_by[str(row.get("constituent_id"))].append(row)
+    for row in interactions:
+        interactions_by[str(row.get("constituent_id"))].append(row)
+    for row in events:
+        events_by[str(row.get("constituent_id"))].append(row)
     profile_by_id = {str(row.get("constituent_id")): row for row in profiles}
-    profiles = [profile_by_id.get(cid, {"constituent_id": cid}) for cid in sorted(all_ids)]
+    all_ids = set(profile_by_id) | set(gifts_by) | set(interactions_by) | set(events_by)
     result: list[dict[str, Any]] = []
-    q = search.strip().lower()
-    for profile in profiles:
-        cid = str(profile.get("constituent_id"))
-        if q and q not in cid.lower() and q not in str(profile.get("capacity_estimate") or "").lower():
-            continue
+    for cid in sorted(all_ids):
+        profile = profile_by_id.get(cid, {"constituent_id": cid})
         donor_gifts = gifts_by.get(cid, [])
-        transaction_total = sum((Decimal(str(x.get("amount") or 0)) for x in donor_gifts), Decimal("0"))
-        latest_event = events_by.get(cid, [{}])[0]
-        preference = prefs.get(cid)
-        result.append({
-            **profile, "transaction_gift_count": len(donor_gifts), "transaction_gift_total": float(transaction_total),
+        donor_interactions = interactions_by.get(cid, [])
+        donor_events = events_by.get(cid, [])
+        total = sum((Decimal(str(row.get("amount") or 0)) for row in donor_gifts), Decimal("0"))
+        result.append({**profile, "transaction_gift_count": len(donor_gifts),
+            "transaction_gift_total": float(total),
             "latest_gift_date": donor_gifts[0].get("gift_date") if donor_gifts else None,
-            "interaction_count": len(interactions_by.get(cid, [])), "latest_interaction": interactions_by.get(cid, [{}])[0],
-            "email_event_count": len(events_by.get(cid, [])), "latest_email_event": latest_event,
-            "preference": preference, "notes": notes_by.get(cid, [])[:3],
-        })
-    return result
+            "interaction_count": len(donor_interactions),
+            "latest_interaction": donor_interactions[0] if donor_interactions else {},
+            "email_event_count": len(donor_events),
+            "latest_email_event": donor_events[0] if donor_events else {}})
+    return tuple(result)
+
+
+def donor_workspace(search: str = "", *, offset: int = 0, limit: int | None = None,
+                    include_total: bool = False) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], int]:
+    source_root = settings.data_dir / "source"
+    fingerprint_items: list[tuple[str, int, int]] = []
+    all_sources_present = True
+    for filename in SOURCE_TABLE_FILES.values():
+        path = source_root / filename
+        if not path.exists():
+            all_sources_present = False
+            break
+        stat = path.stat()
+        fingerprint_items.append((filename, stat.st_mtime_ns, stat.st_size))
+    if all_sources_present:
+        cached_rows = _cached_donor_source_aggregate(tuple(fingerprint_items))
+        q = search.strip().lower()
+        filtered_rows = [row for row in cached_rows if not q or q in str(row.get("constituent_id") or "").lower()]
+        total_count = len(filtered_rows)
+        selected_rows = filtered_rows[max(0, offset):max(0, offset) + limit] if limit is not None else filtered_rows[max(0, offset):]
+        base_rows = [dict(row) for row in selected_rows]
+    else:
+        # Retain partial-source behaviour and testability when one or more exports are absent.
+        profiles = all_rows("constituent_profiles", order="constituent_id")
+        gifts = all_rows("gift_transactions", order="gift_date", desc=True)
+        interactions = all_rows("crm_interactions", order="crm_interaction_date", desc=True)
+        events = all_rows("video_email_events", order="sent_date", desc=True)
+        gifts_by: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        interactions_by: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        events_by: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for row in gifts: gifts_by[str(row.get("constituent_id"))].append(row)
+        for row in interactions: interactions_by[str(row.get("constituent_id"))].append(row)
+        for row in events: events_by[str(row.get("constituent_id"))].append(row)
+        profile_by_id = {str(row.get("constituent_id")): row for row in profiles}
+        all_ids = set(profile_by_id) | set(gifts_by) | set(interactions_by) | set(events_by)
+        base_rows = []
+        for cid in sorted(all_ids):
+            profile = profile_by_id.get(cid, {"constituent_id": cid})
+            donor_gifts = gifts_by.get(cid, [])
+            donor_interactions = interactions_by.get(cid, [])
+            donor_events = events_by.get(cid, [])
+            total = sum((Decimal(str(row.get("amount") or 0)) for row in donor_gifts), Decimal("0"))
+            base_rows.append({**profile, "transaction_gift_count": len(donor_gifts),
+                "transaction_gift_total": float(total),
+                "latest_gift_date": donor_gifts[0].get("gift_date") if donor_gifts else None,
+                "interaction_count": len(donor_interactions),
+                "latest_interaction": donor_interactions[0] if donor_interactions else {},
+                "email_event_count": len(donor_events),
+                "latest_email_event": donor_events[0] if donor_events else {}})
+        q = search.strip().lower()
+        if q:
+            base_rows = [row for row in base_rows if q in str(row.get("constituent_id") or "").lower()]
+        total_count = len(base_rows)
+        base_rows = base_rows[max(0, offset):max(0, offset) + limit] if limit is not None else base_rows[max(0, offset):]
+    prefs = {str(row["constituent_id"]): row for row in all_rows("donor_preferences") if row.get("constituent_id")}
+    notes = all_rows("donor_notes", order="created_at", desc=True)
+    notes_by: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for row in notes:
+        notes_by[str(row.get("constituent_id"))].append(row)
+    for row in base_rows:
+        cid = str(row.get("constituent_id"))
+        row["preference"] = prefs.get(cid)
+        row["notes"] = notes_by.get(cid, [])[:3]
+    return (base_rows, total_count) if include_total else base_rows
 
 
 def donor_profile(constituent_id: str) -> dict[str, Any]:
@@ -1304,6 +1387,16 @@ def review_grant_document(document_id: str, language: str) -> dict[str, Any]:
     related = [x for x in (related_docs.order("created_at", desc=True).limit(20).execute().data or []) if x["id"] != document_id]
     previous = [x for x in related if x.get("document_type") == document.get("document_type")]
     previous_text = previous[0].get("extracted_text", "")[:10000] if previous else "No prior version of this document type is available."
+    linked_grants = ([get_row("grants", document["grant_id"])] if document.get("grant_id")
+                     else rows_where("grants", "proposal_id", document["proposal_id"], limit=50)
+                     if document.get("proposal_id") else [])
+    existing_obligations: list[dict[str, Any]] = []
+    for linked_grant in [grant for grant in linked_grants if grant]:
+        existing_obligations.extend(rows_where("obligations", "grant_id", linked_grant["id"], limit=100))
+    obligations_context = [{"text": item.get("obligation_text"), "classification": item.get("classification"),
+        "clause_reference": item.get("clause_reference"), "due_date": item.get("due_date"),
+        "status": item.get("status"), "source_document": item.get("source_document"),
+        "source_version": item.get("source_version")} for item in existing_obligations]
     related_context = "\n\n".join(
         f"RELATED DOCUMENT: {x.get('filename')} | type={x.get('document_type')} | version={x.get('version_label')}\n{(x.get('extracted_text') or '')[:2500]}"
         for x in related[:8]
@@ -1316,16 +1409,19 @@ def review_grant_document(document_id: str, language: str) -> dict[str, Any]:
         "Do not provide legal advice or state an interpretation as final. Compare with the previous version and identify material changes. "
         f"Write in {'Canadian French' if language == 'fr-CA' else 'Canadian English'}. Return JSON object with keys: "
         "summary, strengths, evidence_gaps, candidate_obligations (array of {text,classification,clause_reference,due_date,source_excerpt}), "
+        "obligation_comparison (array of {existing_obligation,comparison_status,explanation,source_excerpt}), "
         "suggested_indicators, logic_model, bottlenecks, version_changes, questions_for_staff.\n"
-        + f"DOCUMENT TYPE: {document.get('document_type')}\nVERSION: {document.get('version_label')}\nCURRENT DOCUMENT:\n{text}\nPREVIOUS VERSION OF SAME TYPE:\n{previous_text}\nRELATED CROSS-DOCUMENT CONTEXT:\n{related_context}"
+        + f"DOCUMENT TYPE: {document.get('document_type')}\nVERSION: {document.get('version_label')}\nCURRENT DOCUMENT:\n{text}\nPREVIOUS VERSION OF SAME TYPE:\n{previous_text}\nRELATED CROSS-DOCUMENT CONTEXT:\n{related_context}\nEXISTING GRANT OBLIGATIONS (compare for missing, changed or conflicting terms):\n{json.dumps(obligations_context, ensure_ascii=False)}"
     )
     raw = optional_gemini(prompt)
+    used_gemini = bool(raw)
     try:
         review = json.loads(raw) if raw else None
         if not isinstance(review, dict): review = None
     except json.JSONDecodeError:
         review = None
     if review is None:
+        used_gemini = False
         obligations = []
         for match in re.finditer(r"(?im)^.{0,120}\b(must|shall|required to|will submit|doit|devra|sera tenu de)\b.{0,220}$", text):
             obligations.append({"text": match.group(0).strip(), "classification": "candidate_binding_term",
@@ -1335,9 +1431,10 @@ def review_grant_document(document_id: str, language: str) -> dict[str, Any]:
         review = {
             "summary": "Document text was extracted. Gemini is unavailable; only deterministic phrase screening was run.",
             "strengths": [], "evidence_gaps": ["No AI critique was generated; staff must review the document."],
-            "candidate_obligations": obligations, "suggested_indicators": [], "logic_model": {},
-            "bottlenecks": ["Human review is required."], "version_changes": [], "questions_for_staff": [],
+            "candidate_obligations": obligations, "obligation_comparison": [], "suggested_indicators": [], "logic_model": {},
+            "bottlenecks": ["Gemini comparison was unavailable; no automated obligation comparison was completed."], "version_changes": [], "questions_for_staff": [],
         }
+    review["generated_with_gemini"] = used_gemini
     update_row("grant_documents", document_id, {"critique": review, "candidate_obligations": review.get("candidate_obligations", []),
         "review_status": "reviewed_by_assistant_pending_human"})
     create_approval(f"Review extracted document: {document.get('filename')}", "grant_document_review", "grant_document", document_id)
@@ -1478,11 +1575,16 @@ def network_workspace() -> dict[str, Any]:
     org_names = {str(row["id"]): row.get("name") for row in organizations}
     person_names = {str(row["id"]): row.get("full_name") for row in people}
     relationships = all_rows("relationship_edges", order="created_at", desc=True)
+    evidence = evidence_workspace()
+    evidence_by_id = {str(item.get("id")): item for item in evidence}
     for edge in relationships:
         edge["from_name"] = org_names.get(str(edge.get("from_organization_id"))) or person_names.get(str(edge.get("from_person_id")))
         edge["to_name"] = org_names.get(str(edge.get("to_organization_id"))) or person_names.get(str(edge.get("to_person_id")))
+        linked_evidence = evidence_by_id.get(str(edge.get("evidence_item_id")))
+        edge["evidence_title"] = linked_evidence.get("source_title") if linked_evidence else None
+        edge["evidence_url"] = linked_evidence.get("source_url") if linked_evidence else None
     return {"organizations": organizations, "people": people,
-            "relationships": relationships, "evidence": evidence_workspace()}
+            "relationships": relationships, "evidence": evidence}
 
 
 def add_relationship(from_org: str, to_org: str, relationship_type: str,

@@ -50,16 +50,17 @@ def test_reporting_period_is_applied_to_all_source_families(monkeypatch):
 
     assert data["total_giving"] == 250.0
     assert data["gift_count"] == 2
-    assert data["unique_donors"] == 2
+    assert data["unique_donations"] == 2
     assert data["crm_interactions"] == 1
     assert data["email_delivered"] == 1
-    assert data["monthly_series"] == [
-        {"period": "2024-02", "value": 200.0},
-        {"period": "2024-03", "value": 50.0},
-    ]
-    assert data["period_change_from"] == "2024-02"
-    assert data["period_change_to"] == "2024-03"
-    assert data["period_change_pct"] == -75.0
+    assert len(data["monthly_series"]) == 12
+    assert data["monthly_series"][1] == {"period": "February", "value": 200.0}
+    assert data["monthly_series"][2] == {"period": "March", "value": 50.0}
+    assert len(data["daily_series"]) == 7
+    assert data["yearly_series"] == [{"period": "2024", "value": 250.0}]
+    assert data["period_change_from"] is None
+    assert data["period_change_to"] is None
+    assert data["period_change_pct"] is None
 
 
 def test_reporting_rejects_reversed_period(monkeypatch):

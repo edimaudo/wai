@@ -41,12 +41,10 @@
         <a class="nav-link {% if request.url.path.startswith('/app/partnerships') %}is-active{% endif %}" href="/app/partnerships" data-short="P">{{ t('partnerships') }}</a>
         <a class="nav-link {% if request.url.path.startswith('/app/grants') %}is-active{% endif %}" href="/app/grants" data-short="G">{{ t('grants') }}</a>
         <div class="nav-label">{{ t('portfolio_tools') }}</div>
-        <a class="nav-link {% if request.url.path.startswith('/app/reviews') %}is-active{% endif %}" href="/app/reviews" data-short="V">{{ 'Human review' if language == 'en-CA' else 'Révision humaine' }}</a>
-        <a class="nav-link {% if request.url.path.startswith('/app/tasks') %}is-active{% endif %}" href="/app/tasks" data-short="T">{{ 'Follow-up tasks' if language == 'en-CA' else 'Tâches de suivi' }}</a>
+        <a class="nav-link {% if request.url.path.startswith('/app/reviews') %}is-active{% endif %}" href="/app/reviews" data-short="V">{{ t('reviews') }}</a>
         <a class="nav-link {% if request.url.path.startswith('/app/evidence') %}is-active{% endif %}" href="/app/evidence" data-short="E">{{ 'Evidence register' if language == 'en-CA' else 'Registre des preuves' }}</a>
         <a class="nav-link {% if request.url.path.startswith('/app/network') %}is-active{% endif %}" href="/app/network" data-short="N">{{ 'Relationships' if language == 'en-CA' else 'Relations' }}</a>
       </nav>
-      <div class="sidebar-tools"><a class="nav-link {% if request.url.path.startswith('/app/admin/data') %}is-active{% endif %}" href="/app/admin/data" data-short="D">{{ t('data') }}</a></div>
     </aside>
     <div class="main-column">
       <header class="topbar">

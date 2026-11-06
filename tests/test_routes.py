@@ -90,7 +90,8 @@ def test_module_pages_offer_actual_workflow_controls(client):
     grants = client.get("/app/grants").text
 
     assert 'action="/app/funding/sources"' in funding
-    assert 'action="/app/funding/criteria"' in funding
+    assert 'Refine WaterAid fit criteria' not in funding
+    assert 'action="/app/funding/criteria"' not in funding
     assert 'action="/app/reporting/draft"' in reporting
     assert 'action="/app/partnerships"' in partnerships
     assert 'No approved framework is active' not in partnerships

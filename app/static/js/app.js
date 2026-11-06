@@ -82,7 +82,9 @@
         button.setAttribute("aria-controls", `workflow-panel-${index}`);
         button.setAttribute("aria-selected", String(index === 0));
         button.tabIndex = index === 0 ? 0 : -1;
-        button.textContent = heading ? heading.textContent.trim() : `Section ${index + 1}`;
+        const tabLabel = heading ? heading.textContent.trim() : `Section ${index + 1}`;
+        button.textContent = tabLabel.charAt(0).toLocaleUpperCase() + tabLabel.slice(1);
+        if (heading) heading.remove();
         panel.id = `workflow-panel-${index}`;
         panel.setAttribute("role", "tabpanel");
         panel.setAttribute("aria-labelledby", button.id);

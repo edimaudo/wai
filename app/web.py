@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 
 from app.config import settings
 from app.i18n import get_translation
@@ -61,7 +61,7 @@ def _parse_weights(mission: int, geography: int, eligibility: int, timing: int) 
 
 
 @router.get("/", response_class=HTMLResponse, include_in_schema=False, name="landing")
-async def landing(request: Request):
+def landing(request: Request):
     return render(request, "landing/index.html", context={"modules": MODULES})
 
 
@@ -80,7 +80,7 @@ async def update_language(request: Request, language: str = Form(...), next_path
 
 
 @router.get("/ready", include_in_schema=False)
-async def ready():
+def ready():
     try:
         get_service_client().table("workflow_tasks").select("id").limit(1).execute()
         return {"status": "ready", "database": "connected"}
@@ -89,14 +89,14 @@ async def ready():
 
 
 @router.get("/app", include_in_schema=False, name="app_entry")
-async def app_entry():
+def app_entry():
     """Open the first operational workflow; there is no portfolio overview page."""
     return RedirectResponse("/app/funding", status_code=303)
 
 
 # --------------------------- Funding prospecting ---------------------------
 @router.get("/app/funding", response_class=HTMLResponse, name="funding")
-async def funding_page(request: Request):
+def funding_page(request: Request):
     data = wf.list_funding_workspace()
     latest_briefs = wf.all_rows("opportunity_briefs", order="created_at", desc=True)[:10]
     return render(request, "funding/index.html", context={"module": MODULES["funding"], "module_key": "funding",
@@ -188,11 +188,11 @@ async def funding_feedback(request: Request, opportunity_id: str, csrf_token: st
 
 # --------------------------- Reporting intelligence ---------------------------
 @router.get("/app/reporting", response_class=HTMLResponse, name="reporting")
-async def reporting_page(request: Request):
+def reporting_page(request: Request):
     source_status = wf.source_data_status()
     analytics = wf.reporting_analytics() if not source_status["errors"] else {
-        "gift_count": 0, "total_giving": 0, "average_gift": None, "unique_donors": 0,
-        "repeat_donors": 0, "repeat_donor_rate": None, "monthly_series": [],
+        "gift_count": 0, "total_giving": 0, "average_gift": None, "unique_donations": 0,
+        "monthly_series": [], "yearly_series": [], "daily_series": [],
         "crm_interactions": 0, "email_delivered": 0, "email_open_rate": None,
         "email_click_rate": None, "video_start_rate": None,
     }
@@ -217,7 +217,7 @@ async def reporting_draft(request: Request, csrf_token: str = Form(...), title: 
 
 
 @router.get("/app/reporting/{report_id}", response_class=HTMLResponse, name="report_detail")
-async def report_detail_page(request: Request, report_id: str):
+def report_detail_page(request: Request, report_id: str):
     data = wf.report_detail(report_id)
     return render(request, "reporting/detail.html", context=data)
 
@@ -233,15 +233,27 @@ async def report_correction(request: Request, report_id: str, csrf_token: str = 
 
 # --------------------------- Donor stewardship ---------------------------
 @router.get("/app/donors", response_class=HTMLResponse, name="donors")
-async def donors_page(request: Request, q: str = ""):
+def donors_page(request: Request, q: str = "", page: int = 1):
     source_status = wf.source_data_status()
-    donors = wf.donor_workspace(q) if not source_status["errors"] else []
+    page_size = 50
+    page = max(1, page)
+    if source_status["errors"]:
+        donors, total_donors = [], 0
+    else:
+        donors, total_donors = wf.donor_workspace(q, offset=(page - 1) * page_size,
+            limit=page_size, include_total=True)
+    page_count = max(1, (total_donors + page_size - 1) // page_size)
+    if page > page_count and total_donors:
+        page = page_count
+        donors, total_donors = wf.donor_workspace(q, offset=(page - 1) * page_size,
+            limit=page_size, include_total=True)
     return render(request, "donors/index.html", context={"module": MODULES["donors"], "module_key": "donors",
-        "donors": donors, "query": q, "source_status": source_status})
+        "donors": donors, "query": q, "source_status": source_status, "page": page,
+        "page_count": page_count, "total_donors": total_donors})
 
 
 @router.get("/app/donors/{constituent_id}", response_class=HTMLResponse, name="donor_profile")
-async def donor_profile(request: Request, constituent_id: str):
+def donor_profile(request: Request, constituent_id: str):
     profile = wf.donor_profile(constituent_id)
     if not profile.get("source_profile") and not profile.get("gifts") and not profile.get("interactions") and not profile.get("events"):
         raise HTTPException(404)
@@ -291,7 +303,7 @@ async def donor_task(request: Request, constituent_id: str, csrf_token: str = Fo
 
 # --------------------------- Ethical partnerships ---------------------------
 @router.get("/app/partnerships", response_class=HTMLResponse, name="partnerships")
-async def partnerships_page(request: Request):
+def partnerships_page(request: Request):
     return render(request, "partnerships/index.html", context={"module": MODULES["partnerships"], "module_key": "partnerships",
         "assessments": wf.partner_workspace(), "criteria": wf.ensure_partner_criteria()})
 
@@ -339,7 +351,7 @@ async def partner_decision(request: Request, assessment_id: str, csrf_token: str
 
 # --------------------------- Proposal and grant compliance ---------------------------
 @router.get("/app/grants", response_class=HTMLResponse, name="grants")
-async def grants_page(request: Request):
+def grants_page(request: Request):
     workspace = wf.grant_workspace()
     workspace["funding_opportunities"] = wf.list_funding_workspace()["opportunities"]
     workspace["max_upload_mb"] = settings.max_upload_mb
@@ -376,6 +388,18 @@ async def grant_document_upload(request: Request, csrf_token: str = Form(...), p
     return _redirect("/app/grants")
 
 
+@router.get("/app/grants/documents/{document_id}/download", name="grant_document_download")
+def grant_document_download(document_id: str):
+    document = wf.get_row("grant_documents", document_id)
+    if not document:
+        raise HTTPException(404)
+    stored_path = Path(str(document.get("storage_path") or "")).resolve()
+    upload_root = settings.upload_dir.resolve()
+    if not stored_path.is_relative_to(upload_root) or not stored_path.is_file():
+        raise HTTPException(404)
+    return FileResponse(stored_path, filename=Path(str(document.get("filename") or "document")).name)
+
+
 @router.post("/app/grants/documents/{document_id}/review", name="grant_document_review")
 async def grant_document_review(request: Request, document_id: str, csrf_token: str = Form(...)):
     _check_csrf(request, csrf_token)
@@ -410,8 +434,8 @@ async def grant_obligation_status(request: Request, obligation_id: str, csrf_tok
 
 # --------------------------- Shared register ---------------------------
 @router.get("/app/tasks", response_class=HTMLResponse, name="tasks")
-async def tasks_page(request: Request):
-    return render(request, "shared/tasks.html", context={"tasks": wf.task_workspace()})
+def tasks_page(request: Request):
+    return RedirectResponse("/app/reviews", status_code=303)
 
 
 @router.post("/app/tasks", name="task_create")
@@ -420,24 +444,32 @@ async def task_create(request: Request, csrf_token: str = Form(...), module_key:
                       priority: str = Form("medium"), owner_label: str = Form("")):
     _check_csrf(request, csrf_token)
     wf.create_task(module_key, title, description, due_date or None, priority, owner_label=owner_label or None)
-    return _redirect("/app/tasks")
+    return _redirect("/app/reviews")
 
 
 @router.post("/app/tasks/{task_id}/status", name="task_status")
 async def task_status(request: Request, task_id: str, csrf_token: str = Form(...), status: str = Form(...)):
     _check_csrf(request, csrf_token)
     wf.complete_work_task(task_id, status)
-    return _redirect("/app/tasks")
+    return _redirect("/app/reviews")
 
 
 @router.get("/app/evidence", response_class=HTMLResponse, name="evidence")
-async def evidence_page(request: Request):
+def evidence_page(request: Request):
     return render(request, "shared/evidence.html", context={"evidence": wf.evidence_workspace()})
 
 
 @router.get("/app/reviews", response_class=HTMLResponse, name="reviews")
-async def reviews_page(request: Request):
-    return render(request, "shared/reviews.html", context={"approvals": wf.approval_workspace()})
+def reviews_page(request: Request):
+    action_items = []
+    for item in wf.approval_workspace():
+        action_items.append({**item, "kind": "review", "title": item.get("subject") or "Review decision",
+            "type_label": item.get("decision_type", "Review"), "date_label": (item.get("created_at") or "")[:10]})
+    for item in wf.task_workspace():
+        action_items.append({**item, "kind": "task", "title": item.get("title") or "Task",
+            "type_label": item.get("module_key", "Task"), "date_label": item.get("due_date") or item.get("created_at", "")[:10]})
+    action_items.sort(key=lambda row: row.get("created_at") or row.get("due_date") or "", reverse=True)
+    return render(request, "shared/reviews.html", context={"action_items": action_items})
 
 
 @router.post("/app/reviews/{approval_id}", name="review_action")
@@ -449,7 +481,7 @@ async def review_action(request: Request, approval_id: str, csrf_token: str = Fo
 
 
 @router.get("/app/network", response_class=HTMLResponse, name="network")
-async def network_page(request: Request):
+def network_page(request: Request):
     return render(request, "shared/network.html", context=wf.network_workspace())
 
 
@@ -464,5 +496,5 @@ async def network_add(request: Request, csrf_token: str = Form(...), from_org: s
 
 # --------------------------- Data operations ---------------------------
 @router.get("/app/admin/data", response_class=HTMLResponse, name="admin_data")
-async def admin_data(request: Request):
+def admin_data(request: Request):
     return render(request, "admin/data.html", context={"source_status": wf.source_data_status()})
