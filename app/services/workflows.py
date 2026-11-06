@@ -5,6 +5,7 @@ business rules out of the templates and makes human review explicit.
 """
 from __future__ import annotations
 
+import csv
 import hashlib
 import ipaddress
 import json
@@ -33,8 +34,89 @@ def _client():
     return get_service_client()
 
 
+SOURCE_TABLE_FILES = {
+    "gift_transactions": "gift_transactions_table.csv",
+    "crm_interactions": "CRM_interacions_table.csv",
+    "constituent_profiles": "constituent_profile_table.csv",
+    "video_email_events": "video_email_data_table.csv",
+}
+SOURCE_REQUIRED_COLUMNS = {
+    "gift_transactions": {"CONSTITUENT_ID", "GIFT_DATE", "AMOUNT"},
+    "crm_interactions": {"CONSTITUENT_ID", "CRM_INTERACTION_DATE", "CRM_INTERACTION_TYPE"},
+    "constituent_profiles": {"CONSTITUENT_ID"},
+    "video_email_events": {"CONSTITUENT_ID", "CONTACT_ID", "SENT_DATE"},
+}
+
+
+def source_rows(table: str) -> list[dict[str, Any]]:
+    """Read approved source CSVs in place. Source files are never modified or copied."""
+    filename = SOURCE_TABLE_FILES.get(table)
+    if not filename:
+        return []
+    path = (settings.data_dir / "source" / filename).resolve()
+    source_root = (settings.data_dir / "source").resolve()
+    if not path.is_relative_to(source_root):
+        raise WorkflowError("The configured source path is invalid.")
+    if not path.exists():
+        return []
+    rows: list[dict[str, Any]] = []
+    with path.open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        headers = set(reader.fieldnames or [])
+        missing_columns = sorted(SOURCE_REQUIRED_COLUMNS[table] - headers)
+        if missing_columns:
+            raise WorkflowError(f"{filename} is missing required columns: {', '.join(missing_columns)}")
+        for raw in reader:
+            row = {str(key).strip().lower(): (value.strip() if isinstance(value, str) else value)
+                   for key, value in raw.items() if key}
+            for key, value in list(row.items()):
+                if value is None or value == "" or str(value).upper() in {"NA", "N/A", "NULL", "NONE"}:
+                    row[key] = None
+            for key in ("managed_prospect", "bounced", "unsubscribed", "started_video", "watched_video_25_percent",
+                        "watched_video_50_percent", "watched_video_75_percent", "finished_video"):
+                if key in row and row[key] is not None:
+                    row[key] = str(row[key]).strip().lower() in {"1", "true", "t", "yes", "y"}
+            for key in ("amount", "lifetime_giving"):
+                if key in row and row[key] is not None:
+                    try:
+                        row[key] = float(str(row[key]).replace(",", ""))
+                    except ValueError:
+                        row[key] = None
+            for key in ("clicks", "video_views", "video_shares_to_facebook", "lifetime_gift_count", "lifetime_crm_interactions"):
+                if key in row and row[key] is not None:
+                    try:
+                        row[key] = int(float(str(row[key]).replace(",", "")))
+                    except ValueError:
+                        row[key] = None
+            row["source_file"] = filename
+            rows.append(row)
+    return rows
+
+
+def source_data_status() -> dict[str, Any]:
+    root = settings.data_dir / "source"
+    expected = list(SOURCE_TABLE_FILES.values())
+    present = {p.name: p.stat().st_size for p in root.glob("*.csv")} if root.exists() else {}
+    missing = [name for name in expected if name not in present]
+    record_counts: dict[str, int] = {}
+    errors: list[str] = []
+    for table, filename in SOURCE_TABLE_FILES.items():
+        try:
+            record_counts[table] = len(source_rows(table))
+        except (WorkflowError, OSError, csv.Error, UnicodeDecodeError) as exc:
+            record_counts[table] = 0
+            errors.append(str(exc))
+    return {"root": str(root), "expected": expected, "present": present, "missing": missing,
+            "errors": errors, "ready": not missing and not errors, "record_counts": record_counts}
+
+
 def all_rows(table: str, fields: str = "*", *, order: str | None = None, desc: bool = False,
              page_size: int = 1000, maximum: int = 50000) -> list[dict[str, Any]]:
+    if table in SOURCE_TABLE_FILES:
+        result = source_rows(table)
+        if order:
+            result.sort(key=lambda item: (item.get(order) is None, item.get(order) or ""), reverse=desc)
+        return result[:maximum]
     client = _client()
     result: list[dict[str, Any]] = []
     start = 0
@@ -53,6 +135,11 @@ def all_rows(table: str, fields: str = "*", *, order: str | None = None, desc: b
 
 def rows_where(table: str, field: str, value: Any, fields: str = "*", *, order: str | None = None,
                desc: bool = False, limit: int = 1000) -> list[dict[str, Any]]:
+    if table in SOURCE_TABLE_FILES:
+        result = [row for row in source_rows(table) if str(row.get(field) or "") == str(value)]
+        if order:
+            result.sort(key=lambda item: (item.get(order) is None, item.get(order) or ""), reverse=desc)
+        return result[:limit]
     query = _client().table(table).select(fields).eq(field, value)
     if order:
         query = query.order(order, desc=desc)
@@ -651,16 +738,9 @@ def reporting_analytics(period_start: str | None = None, period_end: str | None 
     video_started = [x for x in delivered if x.get("started_video") is True]
     repeat_donors = sum(1 for count in donor_counts.values() if count > 1)
     gifts_total = sum((Decimal(str(x.get("amount"))) for x in gifts if x.get("amount") is not None), Decimal("0"))
-    latest_gift_import = []
-    try:
-        latest_gift_import = rows_where("data_imports", "dataset_key", "gift_transactions", order="created_at", desc=True, limit=1)
-    except Exception:
-        latest_gift_import = []
-    latest_rejected_gift_rows = int((latest_gift_import[0].get("records_rejected") or 0)) if latest_gift_import else 0
     quality = {
         "gift_records": len(gifts), "valid_gifts": valid_gifts, "gift_dates_missing_or_invalid": rejected_gift_dates,
-        "gift_rows_rejected_in_latest_import": latest_rejected_gift_rows,
-        "latest_gift_import_file": latest_gift_import[0].get("source_file") if latest_gift_import else None,
+        "source_file": SOURCE_TABLE_FILES["gift_transactions"],
         "crm_interaction_records": len(interactions), "video_email_records": len(events),
         "delivered_email_records": len(delivered),
         "constituent_join_note": "Cross-source joins use exact CONSTITUENT_ID only; unmatched IDs are not fuzzy-matched.",
@@ -703,19 +783,30 @@ def build_reporting_narrative(analytics: dict[str, Any], audience: str, purpose:
     except json.JSONDecodeError:
         result = {"executive_summary": raw} if raw else None
     if result is None:
-        summary = (
-            f"The imported data contains {analytics['gift_count']} valid gift transactions totalling "
-            f"{analytics['total_giving']:,.2f} source units across {analytics['unique_donors']} exact constituent IDs. "
-            f"There are {analytics['crm_interactions']} recorded CRM interactions."
-        )
-        result = {
-            "executive_summary": summary,
-            "observed_changes": f"Monthly giving records are available for {len(analytics['monthly_series'])} months. Period-on-period comparison: {analytics['period_change_pct'] if analytics['period_change_pct'] is not None else 'not available'}.",
-            "possible_explanations": "No causal explanation is assigned by the application. Staff context is required.",
-            "risks_or_opportunities": "Review repeat giving and engagement measures only where source coverage and denominators are sufficient.",
-            "questions_for_staff": ["Were there one-time or restricted gifts in the period?", "Did campaign activity or data definitions change?", "What operational context should accompany these figures?"],
-            "data_limitations": [analytics["quality"]["currency_note"], analytics["quality"]["constituent_join_note"]],
-        }
+        if language == "fr-CA":
+            summary = (f"Les données sources contiennent {analytics['gift_count']} transactions de dons valides, totalisant "
+                       f"{analytics['total_giving']:,.2f} unités sources pour {analytics['unique_donors']} identifiants de constituants distincts. "
+                       f"{analytics['crm_interactions']} interactions CRM sont consignées.")
+            result = {
+                "executive_summary": summary,
+                "observed_changes": f"Les données mensuelles couvrent {len(analytics['monthly_series'])} mois. La variation entre les deux derniers mois est de {analytics['period_change_pct'] if analytics['period_change_pct'] is not None else 'non disponible'}.",
+                "possible_explanations": "L’application n’attribue aucune cause. Le contexte du personnel est nécessaire.",
+                "risks_or_opportunities": "Examinez les dons récurrents et les mesures d’engagement uniquement lorsque la couverture des sources et les dénominateurs sont suffisants.",
+                "questions_for_staff": ["Y a-t-il eu des dons ponctuels ou affectés pendant la période?", "L’activité de campagne ou les définitions des mesures ont-elles changé?", "Quel contexte opérationnel doit accompagner ces chiffres?"],
+                "data_limitations": ["La devise n’est pas précisée dans les fichiers sources.", "Les rapprochements entre sources utilisent uniquement l’identifiant CONSTITUENT_ID exact."],
+            }
+        else:
+            summary = (f"The source data contains {analytics['gift_count']} valid gift transactions totalling "
+                       f"{analytics['total_giving']:,.2f} source units across {analytics['unique_donors']} exact constituent IDs. "
+                       f"There are {analytics['crm_interactions']} recorded CRM interactions.")
+            result = {
+                "executive_summary": summary,
+                "observed_changes": f"Monthly giving records are available for {len(analytics['monthly_series'])} months. Period-on-period comparison: {analytics['period_change_pct'] if analytics['period_change_pct'] is not None else 'not available'}.",
+                "possible_explanations": "No causal explanation is assigned by the application. Staff context is required.",
+                "risks_or_opportunities": "Review repeat giving and engagement measures only where source coverage and denominators are sufficient.",
+                "questions_for_staff": ["Were there one-time or restricted gifts in the period?", "Did campaign activity or data definitions change?", "What operational context should accompany these figures?"],
+                "data_limitations": [analytics["quality"]["currency_note"], analytics["quality"]["constituent_join_note"]],
+            }
     result["audience"] = audience
     result["purpose"] = purpose
     result["status"] = "draft_requires_review"
@@ -814,9 +905,12 @@ def donor_workspace(search: str = "") -> list[dict[str, Any]]:
     for row in interactions: interactions_by[str(row.get("constituent_id"))].append(row)
     for row in events: events_by[str(row.get("constituent_id"))].append(row)
     for row in notes: notes_by[str(row.get("constituent_id"))].append(row)
-    if not profiles:
-        ids = sorted(set(gifts_by) | set(interactions_by) | set(events_by))
-        profiles = [{"constituent_id": value} for value in ids]
+    # Preserve every constituent found in any supplied source file. The profile
+    # export is not guaranteed to contain a row for every transaction ID.
+    profile_ids = {str(row.get("constituent_id")) for row in profiles}
+    all_ids = profile_ids | set(gifts_by) | set(interactions_by) | set(events_by)
+    profile_by_id = {str(row.get("constituent_id")): row for row in profiles}
+    profiles = [profile_by_id.get(cid, {"constituent_id": cid}) for cid in sorted(all_ids)]
     result: list[dict[str, Any]] = []
     q = search.strip().lower()
     for profile in profiles:
@@ -914,7 +1008,9 @@ def create_donor_draft(constituent_id: str, purpose: str, style: str, language: 
     )
     draft = optional_gemini(prompt)
     if not draft:
-        return {"blocked": False, "draft": "Gemini is not configured. Configure GEMINI_API_KEY to draft a message. No message was sent.",
+        fallback_message = ("Gemini n’est pas configuré. Configurez GEMINI_API_KEY pour préparer un message. Aucun message n’a été envoyé."
+                            if language == "fr-CA" else "Gemini is not configured. Configure GEMINI_API_KEY to draft a message. No message was sent.")
+        return {"blocked": False, "draft": fallback_message,
                 "facts_used": [], "review_required": True}
     result = {"blocked": False, "draft": draft, "facts_used": ["Recorded gift and interaction history; verify each detail before use."], "review_required": True}
     audit("donor.draft_generated", "constituent", constituent_id, {"purpose": purpose[:300]})
@@ -952,85 +1048,9 @@ def ensure_partner_criteria() -> list[dict[str, Any]]:
     for key, title, description in DEFAULT_PARTNER_CRITERIA:
         created.append(insert_row("partner_framework_criteria", {
             "criterion_key": key, "title": title, "description": description,
-            "framework_version": "demonstration-assumption-v1", "is_active": True,
+            "framework_version": "challenge-brief-review-domains-v1", "is_active": True,
         }))
     return created
-
-
-def partner_framework_workspace() -> dict[str, Any]:
-    documents = all_rows("partner_framework_documents", order="created_at", desc=True)
-    criteria = ensure_partner_criteria()
-    active_document = next((item for item in documents if item.get("status") == "active"), None)
-    return {"framework_documents": documents, "criteria": criteria, "active_framework": active_document}
-
-
-def upload_partner_framework(filename: str, content: bytes) -> dict[str, Any]:
-    if not content or len(content) > settings.max_upload_mb * 1024 * 1024:
-        raise WorkflowError(f"File must be between 1 byte and {settings.max_upload_mb} MB.")
-    suffix = Path(filename).suffix.lower()
-    if suffix not in {".pdf", ".docx", ".txt", ".md"}:
-        raise WorkflowError("The policy framework must be a PDF, DOCX, TXT or Markdown file.")
-    digest = hashlib.sha256(content).hexdigest()
-    duplicate = _client().table("partner_framework_documents").select("id").eq("content_hash", digest).limit(1).execute().data or []
-    if duplicate:
-        raise WorkflowError("This exact policy document has already been uploaded.")
-    target_dir = (settings.upload_dir / "partner-frameworks").resolve()
-    target_dir.mkdir(parents=True, exist_ok=True)
-    target = target_dir / f"{digest[:16]}_{Path(filename).name[:100]}"
-    target.write_bytes(content)
-    extracted, extraction_status = extract_document_text(target, suffix)
-    if not extracted:
-        raise WorkflowError("No text could be extracted from this policy document. Provide a text-based file or have it reviewed manually.")
-    stem = Path(filename).stem.strip()[:100] or "Ethical partnership framework"
-    row = insert_row("partner_framework_documents", {
-        "filename": Path(filename).name[:180], "storage_path": str(target), "content_hash": digest,
-        "extracted_text": extracted[:500000], "extraction_status": extraction_status,
-        "framework_version": f"{stem} ({digest[:8]})", "status": "pending_review",
-    })
-    audit("partner.framework_uploaded", "partner_framework_document", row["id"],
-          {"filename": filename, "extraction_status": extraction_status})
-    return row
-
-
-def update_partner_criterion(criterion_id: str, title: str, description: str, active: bool,
-                             policy_document_id: str | None = None,
-                             policy_clause_reference: str = "") -> dict[str, Any]:
-    document = get_row("partner_framework_documents", policy_document_id) if policy_document_id else None
-    if policy_document_id and not document:
-        raise WorkflowError("The selected policy framework document could not be found.")
-    row = update_row("partner_framework_criteria", criterion_id, {
-        "title": title.strip()[:180], "description": description.strip()[:2000], "is_active": bool(active),
-        "policy_document_id": policy_document_id or None,
-        "policy_clause_reference": policy_clause_reference.strip()[:500] or None,
-        "framework_version": document.get("framework_version") if document else "demonstration-assumption-v1",
-    })
-    audit("partner.criteria_updated", "partner_framework_criterion", criterion_id,
-          {"active": active, "policy_document_id": policy_document_id, "policy_clause_reference": policy_clause_reference[:200]})
-    return row
-
-
-def activate_partner_framework(document_id: str) -> dict[str, Any]:
-    document = get_row("partner_framework_documents", document_id)
-    if not document or not document.get("extracted_text"):
-        raise WorkflowError("Upload and extract a policy framework before activating it.")
-    criteria = [item for item in ensure_partner_criteria() if item.get("is_active", True)]
-    unmapped = [item.get("title", item.get("criterion_key")) for item in criteria
-                if item.get("policy_document_id") != document_id or not item.get("policy_clause_reference")]
-    if unmapped:
-        raise WorkflowError("Map every active criterion to a clause in this document before activation: " + ", ".join(unmapped))
-    _client().table("partner_framework_documents").update({
-        "status": "superseded"
-    }).eq("status", "active").execute()
-    active = update_row("partner_framework_documents", document_id, {
-        "status": "active", "activated_at": datetime.now(timezone.utc).isoformat()
-    })
-    for criterion in criteria:
-        update_row("partner_framework_criteria", criterion["id"], {"framework_version": document["framework_version"]})
-    create_approval("Activate ethical partnership framework: " + document["filename"],
-                    "partner_framework_activation", "partner_framework_document", document_id, status="approved")
-    audit("partner.framework_activated", "partner_framework_document", document_id,
-          {"framework_version": document["framework_version"], "mapped_criteria": len(criteria)})
-    return active
 
 
 def partner_workspace() -> list[dict[str, Any]]:
@@ -1040,15 +1060,13 @@ def partner_workspace() -> list[dict[str, Any]]:
     by_assessment: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for finding in findings:
         by_assessment[finding.get("assessment_id")].append(finding)
-    framework_docs = {str(x["id"]): x for x in all_rows("partner_framework_documents")}
     result = []
     for assessment in assessments:
         org = organizations.get(assessment.get("organization_id"), {})
         result.append({**assessment, "organization": org,
-                       "framework_document": framework_docs.get(str(assessment.get("policy_document_id"))),
                        "findings": by_assessment.get(assessment["id"], []),
                        "finding_count": len(by_assessment.get(assessment["id"], [])),
-                       "framework_assumption": str(assessment.get("framework_version", "")).startswith("demonstration")})
+                       "framework_assumption": False})
     return result
 
 
@@ -1057,20 +1075,19 @@ def create_partner_case(name: str, website: str, country: str, organization_type
     org = insert_row("organizations", {"name": name.strip()[:180], "website": site,
         "country": country.strip()[:100], "organization_type": organization_type.strip()[:120],
         "source_status": "unverified"})
-    active_framework = _client().table("partner_framework_documents").select("id,framework_version").eq("status", "active").limit(1).execute().data or []
-    framework = active_framework[0] if active_framework else None
     assessment = insert_row("partner_assessments", {
-        "organization_id": org["id"], "framework_version": framework["framework_version"] if framework else "demonstration-assumption-v1",
-        "policy_document_id": framework["id"] if framework else None,
+        "organization_id": org["id"], "framework_version": "challenge-brief-review-domains-v1",
+        "policy_document_id": None,
         "status": "draft", "recommendation": "pending_review",
-        "research_coverage": {}, "open_questions": [] if framework else ["Load and activate the approved WaterAid ethical partnership framework before treating criteria as policy."],
+        "research_coverage": {}, "open_questions": [],
     })
     audit("partner.assessment_created", "partner_assessment", assessment["id"], {"organization": name})
     return {"organization": org, "assessment": assessment}
 
 
 async def capture_partner_evidence(assessment_id: str, url: str, criterion_key: str,
-                                   evidence_type: str, reliability: str, note: str = "") -> dict[str, Any]:
+                                   evidence_type: str, reliability: str, note: str = "",
+                                   language: str = "en-CA") -> dict[str, Any]:
     source_url = safe_public_url(url)
     parsed = urlparse(source_url)
     if reliability not in {"high", "medium", "low", "unassessed"}:
@@ -1096,7 +1113,7 @@ async def capture_partner_evidence(assessment_id: str, url: str, criterion_key: 
         "criterion_key": criterion_key, "http_status": response.status_code, "content_hash": digest,
         "human_review_required": True}})
     finding_text = optional_gemini(
-        "Review the captured public-source text for a partnership due diligence assessment. Do not assert facts beyond the source. "
+        f"Review the captured public-source text for a partnership due diligence assessment. Respond in {'Canadian French' if language == 'fr-CA' else 'Canadian English'}. Do not assert facts beyond the source. "
         "Identify concise candidate observations, dates, whether statements are allegations/investigations/formal findings/responses, "
         "source limitations and questions for human verification. Do not make a Go/No-Go decision.\n"
         + f"Criterion: {criterion_key}\nURL: {source_url}\nTITLE: {title}\nTEXT: {excerpt[:6500]}"
@@ -1148,8 +1165,6 @@ def save_partner_decision(assessment_id: str, decision: str, rationale: str) -> 
     for criterion in active_criteria:
         if criterion["criterion_key"] not in coverage:
             questions.append(f"No evidence captured for {criterion['title']}.")
-    if assessment.get("framework_version", "").startswith("demonstration"):
-        questions.append("Decision is recorded against demonstration assumptions, not an approved WaterAid policy framework.")
     result = update_row("partner_assessments", assessment_id, {
         "status": "decision_recorded_pending_approval", "recommendation": decision,
         "research_coverage": {"criteria_with_evidence": coverage, "criteria_without_evidence": max(0, len(active_criteria) - len(set(coverage) & {x['criterion_key'] for x in active_criteria}))},
@@ -1421,7 +1436,16 @@ def complete_work_task(task_id: str, status: str) -> dict[str, Any]:
 
 
 def evidence_workspace() -> list[dict[str, Any]]:
-    return all_rows("evidence_items", order="checked_at", desc=True)
+    rows = all_rows("evidence_items", order="checked_at", desc=True)
+    # One source capture can be referenced by several workflow records. Show it once
+    # in the shared register while retaining the underlying linked findings.
+    unique: dict[tuple[str, str, str], dict[str, Any]] = {}
+    for row in rows:
+        key = (str(row.get("source_url") or "").strip().lower(),
+               str(row.get("source_title") or "").strip().lower(),
+               hashlib.sha256(str(row.get("excerpt") or "").strip().encode("utf-8")).hexdigest())
+        unique.setdefault(key, row)
+    return list(unique.values())
 
 
 def approval_workspace() -> list[dict[str, Any]]:

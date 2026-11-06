@@ -11,7 +11,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from app.config import settings
 from app.i18n import get_translation
 from app.security import csrf_is_valid, new_csrf_token
-from app.services.csv_ingestion import import_recognized_files, scan_data_folder
 from app.services.modules import MODULES
 from app.services import workflows as wf
 from app.supabase_client import get_service_client
@@ -83,7 +82,7 @@ async def update_language(request: Request, language: str = Form(...), next_path
 @router.get("/ready", include_in_schema=False)
 async def ready():
     try:
-        get_service_client().table("organization_context").select("id").limit(1).execute()
+        get_service_client().table("workflow_tasks").select("id").limit(1).execute()
         return {"status": "ready", "database": "connected"}
     except Exception as exc:
         raise HTTPException(status_code=503, detail="Supabase is not ready.") from exc
@@ -95,40 +94,13 @@ async def app_entry():
     return RedirectResponse("/app/funding", status_code=303)
 
 
-@router.get("/app/organization", response_class=HTMLResponse, name="organization_context")
-async def organization_context_page(request: Request):
-    return render(request, "organization/index.html", context={
-        "strategy": wf.get_strategy_context(),
-    })
-
-
-@router.post("/app/strategy/save", name="strategy_save")
-async def strategy_save(request: Request, csrf_token: str = Form(...), mission: str = Form(""),
-                        vision: str = Form(""), long_term_objectives: str = Form(""), growth_plan: str = Form(""),
-                        key_advantages: str = Form(""), community_impact: str = Form(""),
-                        strategic_priorities: str = Form(""), values_statement: str = Form("")):
-    _check_csrf(request, csrf_token)
-    wf.save_strategy_context(locals())
-    return _redirect("/app/organization")
-
-
-@router.post("/app/strategy/refine", name="strategy_refine")
-async def strategy_refine(request: Request, csrf_token: str = Form(...)):
-    _check_csrf(request, csrf_token)
-    context = wf.get_strategy_context()
-    refined = wf.refine_strategy_context(context, _lang(request))
-    return render(request, "organization/index.html", context={
-        "strategy": wf.get_strategy_context(), "refined_strategy": refined,
-    })
-
-
 # --------------------------- Funding prospecting ---------------------------
 @router.get("/app/funding", response_class=HTMLResponse, name="funding")
 async def funding_page(request: Request):
     data = wf.list_funding_workspace()
     latest_briefs = wf.all_rows("opportunity_briefs", order="created_at", desc=True)[:10]
     return render(request, "funding/index.html", context={"module": MODULES["funding"], "module_key": "funding",
-        **data, "latest_briefs": latest_briefs, "strategy": wf.get_strategy_context()})
+        **data, "latest_briefs": latest_briefs, "source_status": wf.source_data_status()})
 
 
 @router.post("/app/funding/sources", name="funding_source_add")
@@ -165,15 +137,6 @@ async def funding_opportunity_add(request: Request, csrf_token: str = Form(...),
     return _redirect("/app/funding")
 
 
-@router.post("/app/funding/check-sources", name="funding_sources_check")
-async def funding_sources_check(request: Request, csrf_token: str = Form(...)):
-    _check_csrf(request, csrf_token)
-    result = await wf.check_funding_sources()
-    return render(request, "funding/index.html", context={"module": MODULES["funding"], "module_key": "funding",
-        **wf.list_funding_workspace(), "latest_briefs": wf.all_rows("opportunity_briefs", order="created_at", desc=True)[:10],
-        "strategy": wf.get_strategy_context(), "source_check_result": result})
-
-
 @router.post("/app/funding/{opportunity_id}/brief", name="funding_brief")
 async def funding_brief(request: Request, opportunity_id: str, csrf_token: str = Form(...)):
     _check_csrf(request, csrf_token)
@@ -189,7 +152,7 @@ async def funding_brief(request: Request, opportunity_id: str, csrf_token: str =
     wf.audit("funding.brief_created", "opportunity_brief", saved["id"], {"opportunity_id": opportunity_id})
     return render(request, "funding/index.html", context={"module": MODULES["funding"], "module_key": "funding",
         **wf.list_funding_workspace(), "latest_briefs": wf.all_rows("opportunity_briefs", order="created_at", desc=True)[:10],
-        "strategy": wf.get_strategy_context(), "generated_brief": {**brief, "id": saved["id"], "title": opportunity.get("title")}})
+        "source_status": wf.source_data_status(), "generated_brief": {**brief, "id": saved["id"], "title": opportunity.get("title")}})
 
 
 @router.post("/app/funding/{opportunity_id}/decision", name="funding_decision")
@@ -226,10 +189,16 @@ async def funding_feedback(request: Request, opportunity_id: str, csrf_token: st
 # --------------------------- Reporting intelligence ---------------------------
 @router.get("/app/reporting", response_class=HTMLResponse, name="reporting")
 async def reporting_page(request: Request):
-    analytics = wf.reporting_analytics()
+    source_status = wf.source_data_status()
+    analytics = wf.reporting_analytics() if not source_status["errors"] else {
+        "gift_count": 0, "total_giving": 0, "average_gift": None, "unique_donors": 0,
+        "repeat_donors": 0, "repeat_donor_rate": None, "monthly_series": [],
+        "crm_interactions": 0, "email_delivered": 0, "email_open_rate": None,
+        "email_click_rate": None, "video_start_rate": None,
+    }
     reports = wf.all_rows("reports", order="created_at", desc=True)[:30]
     return render(request, "reporting/index.html", context={"module": MODULES["reporting"], "module_key": "reporting",
-        "analytics": analytics, "reports": reports})
+        "analytics": analytics, "reports": reports, "source_status": source_status})
 
 
 @router.post("/app/reporting/draft", name="reporting_draft")
@@ -265,8 +234,10 @@ async def report_correction(request: Request, report_id: str, csrf_token: str = 
 # --------------------------- Donor stewardship ---------------------------
 @router.get("/app/donors", response_class=HTMLResponse, name="donors")
 async def donors_page(request: Request, q: str = ""):
+    source_status = wf.source_data_status()
+    donors = wf.donor_workspace(q) if not source_status["errors"] else []
     return render(request, "donors/index.html", context={"module": MODULES["donors"], "module_key": "donors",
-        "donors": wf.donor_workspace(q), "query": q})
+        "donors": donors, "query": q, "source_status": source_status})
 
 
 @router.get("/app/donors/{constituent_id}", response_class=HTMLResponse, name="donor_profile")
@@ -321,9 +292,8 @@ async def donor_task(request: Request, constituent_id: str, csrf_token: str = Fo
 # --------------------------- Ethical partnerships ---------------------------
 @router.get("/app/partnerships", response_class=HTMLResponse, name="partnerships")
 async def partnerships_page(request: Request):
-    framework = wf.partner_framework_workspace()
     return render(request, "partnerships/index.html", context={"module": MODULES["partnerships"], "module_key": "partnerships",
-        "assessments": wf.partner_workspace(), **framework, "max_upload_mb": settings.max_upload_mb})
+        "assessments": wf.partner_workspace(), "criteria": wf.ensure_partner_criteria()})
 
 
 @router.post("/app/partnerships", name="partner_create")
@@ -340,30 +310,12 @@ async def partner_capture(request: Request, assessment_id: str, csrf_token: str 
                           evidence_type: str = Form("background"), reliability: str = Form("unassessed"),
                           note: str = Form("")):
     _check_csrf(request, csrf_token)
-    result = await wf.capture_partner_evidence(assessment_id, url, criterion_key, evidence_type, reliability, note)
-    framework = wf.partner_framework_workspace()
+    result = await wf.capture_partner_evidence(assessment_id, url, criterion_key, evidence_type, reliability, note, _lang(request))
     return render(request, "partnerships/index.html", context={"module": MODULES["partnerships"], "module_key": "partnerships",
-        "assessments": wf.partner_workspace(), **framework, "max_upload_mb": settings.max_upload_mb, "captured_evidence": result})
+        "assessments": wf.partner_workspace(), "criteria": wf.ensure_partner_criteria(), "captured_evidence": result})
 
 
 
-
-@router.post("/app/partnerships/framework", name="partner_framework_upload")
-async def partner_framework_upload(request: Request, csrf_token: str = Form(...),
-                                   upload: UploadFile = File(...)):
-    _check_csrf(request, csrf_token)
-    content = await upload.read(settings.max_upload_mb * 1024 * 1024 + 1)
-    if len(content) > settings.max_upload_mb * 1024 * 1024:
-        raise HTTPException(413, f"The upload exceeds {settings.max_upload_mb} MB.")
-    wf.upload_partner_framework(upload.filename or "ethical-framework", content)
-    return _redirect("/app/partnerships")
-
-
-@router.post("/app/partnerships/framework/{document_id}/activate", name="partner_framework_activate")
-async def partner_framework_activate(request: Request, document_id: str, csrf_token: str = Form(...)):
-    _check_csrf(request, csrf_token)
-    wf.activate_partner_framework(document_id)
-    return _redirect("/app/partnerships")
 
 @router.post("/app/partnerships/{assessment_id}/finding", name="partner_finding")
 async def partner_finding(request: Request, assessment_id: str, csrf_token: str = Form(...),
@@ -374,17 +326,6 @@ async def partner_finding(request: Request, assessment_id: str, csrf_token: str 
     _check_csrf(request, csrf_token)
     wf.add_partner_finding(assessment_id, criterion_key, finding_type, finding_text, source_url,
                            source_title, reliability, organization_response)
-    return _redirect("/app/partnerships")
-
-
-@router.post("/app/partnerships/criteria/{criterion_id}", name="partner_criterion_update")
-async def partner_criterion_update(request: Request, criterion_id: str, csrf_token: str = Form(...),
-                                   title: str = Form(...), description: str = Form(""),
-                                   active: str | None = Form(None), policy_document_id: str = Form(""),
-                                   policy_clause_reference: str = Form("")):
-    _check_csrf(request, csrf_token)
-    wf.update_partner_criterion(criterion_id, title, description, active == "on",
-                                policy_document_id or None, policy_clause_reference)
     return _redirect("/app/partnerships")
 
 
@@ -524,30 +465,4 @@ async def network_add(request: Request, csrf_token: str = Form(...), from_org: s
 # --------------------------- Data operations ---------------------------
 @router.get("/app/admin/data", response_class=HTMLResponse, name="admin_data")
 async def admin_data(request: Request):
-    imports: list[dict[str, Any]] = []
-    try:
-        imports = wf.all_rows("data_imports", order="created_at", desc=True)[:30]
-    except Exception:
-        log.exception("Unable to retrieve import history")
-    return render(request, "admin/data.html", context={"scan": scan_data_folder(), "imports": imports})
-
-
-@router.post("/app/admin/data/import", name="admin_import_data")
-async def admin_import_data(request: Request, csrf_token: str = Form(...)):
-    _check_csrf(request, csrf_token)
-    result = import_recognized_files()
-    wf.audit("data.import_requested", "data_import", None, result)
-    imports: list[dict[str, Any]] = []
-    try:
-        imports = wf.all_rows("data_imports", order="created_at", desc=True)[:30]
-    except Exception:
-        log.exception("Unable to retrieve import history after import")
-    return render(request, "admin/data.html", context={"scan": scan_data_folder(), "imports": imports, "import_result": result})
-
-
-@router.get("/app/admin", response_class=HTMLResponse, name="admin")
-async def admin_dashboard(request: Request):
-    scan = scan_data_folder()
-    sources = wf.all_rows("source_registry", order="name")
-    return render(request, "admin/index.html", context={"scan": scan, "sources": sources,
-        "gemini_configured": settings.gemini_api_key != ""})
+    return render(request, "admin/data.html", context={"source_status": wf.source_data_status()})

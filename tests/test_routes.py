@@ -75,7 +75,7 @@ def client(monkeypatch):
 def test_core_pages_render_with_empty_database(client):
     paths = [
         "/", "/app/funding", "/app/reporting", "/app/donors",
-        "/app/partnerships", "/app/grants", "/app/organization", "/app/tasks", "/app/evidence",
+        "/app/partnerships", "/app/grants", "/app/tasks", "/app/evidence",
         "/app/reviews", "/app/network", "/app/admin/data", "/ready", "/health",
     ]
     for path in paths:
@@ -93,34 +93,10 @@ def test_module_pages_offer_actual_workflow_controls(client):
     assert 'action="/app/funding/criteria"' in funding
     assert 'action="/app/reporting/draft"' in reporting
     assert 'action="/app/partnerships"' in partnerships
-    assert 'action="/app/partnerships/framework"' in partnerships
-    assert 'policy_clause_reference' in partnerships
+    assert 'No approved framework is active' not in partnerships
+    assert 'policy_clause_reference' not in partnerships
     assert 'action="/app/grants/documents"' in grants
     assert 'action="/app/grants/obligations"' in grants
-
-
-def test_partner_framework_upload_creates_persistent_pending_document(client, monkeypatch, tmp_path):
-    from pathlib import Path
-
-    monkeypatch.setattr(workflows.settings, "upload_dir", tmp_path)
-    monkeypatch.setattr(workflows, "extract_document_text", lambda path, suffix: ("Policy clause 4.1", "completed"))
-    page = client.get("/app/partnerships")
-    import re
-    token_match = re.search(r'name="csrf_token" value="([^"]+)"', page.text)
-    assert token_match
-    response = client.post(
-        "/app/partnerships/framework",
-        data={"csrf_token": token_match.group(1)},
-        files={"upload": ("ethical-policy.txt", b"Policy clause 4.1", "text/plain")},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    stored = list(Path(tmp_path).rglob("ethical-policy.txt"))
-    # Stored filenames are prefixed with a content hash; the original name remains in metadata.
-    assert not stored
-    hashed = list((Path(tmp_path) / "partner-frameworks").glob("*ethical-policy.txt"))
-    assert len(hashed) == 1
-    assert hashed[0].read_bytes() == b"Policy clause 4.1"
 
 
 def test_no_in_app_login_or_logout_routes(client):
@@ -156,13 +132,12 @@ def test_app_entry_redirects_to_first_operational_workflow(client):
     assert response.headers["location"] == "/app/funding"
 
 
-def test_portfolio_overview_is_removed_and_organization_context_is_preserved(client):
+def test_portfolio_overview_and_organization_context_are_removed(client):
     response = client.get("/app/organization")
-    assert response.status_code == 200
-    assert "Save organizational context" in response.text
-    assert "Portfolio overview" not in response.text
-    assert "Organization context" in response.text
-
+    assert response.status_code == 404
+    funding = client.get("/app/funding").text
+    assert "Organization context" not in funding
+    assert "Portfolio overview" not in funding
 
 def test_cross_workflow_navigation_uses_portfolio_tools_label(client):
     response = client.get("/app/funding")
@@ -173,3 +148,38 @@ def test_cross_workflow_navigation_uses_portfolio_tools_label(client):
     tasks = client.get("/app/tasks")
     assert "Portfolio tools" in tasks.text
 
+
+
+def test_core_workflows_render_in_canadian_french(client):
+    client.cookies.set("wai_language", "fr-CA")
+    for path, expected in [
+        ("/app/funding", "Prospection de subventions"),
+        ("/app/reporting", "Intelligence des dons"),
+        ("/app/donors", "Relations avec les donateurs"),
+        ("/app/partnerships", "Diligence raisonnable des partenariats"),
+        ("/app/grants", "Propositions et conformité des subventions"),
+    ]:
+        response = client.get(path)
+        assert response.status_code == 200
+        assert expected in response.text
+
+
+def test_requested_redundant_controls_and_sections_are_removed(client):
+    funding = client.get("/app/funding").text
+    donor = client.get("/app/donors").text
+    reporting = client.get("/app/reporting").text
+    partnership = client.get("/app/partnerships").text
+    assert "Check public sources now" not in funding
+    assert "Stewardship safeguards" not in donor
+    assert "Limitations to carry into every report" not in reporting
+    assert "No approved framework is active" not in partnership
+    assert "Upload the approved framework" not in partnership
+    assert 'class="eyebrow"' not in funding + donor + reporting + partnership
+    assert client.get("/app/funding/check-sources").status_code == 404
+
+
+def test_source_data_page_is_read_only_and_does_not_offer_import(client):
+    response = client.get("/app/admin/data")
+    assert response.status_code == 200
+    assert "does not import or modify these files" in response.text
+    assert 'action="/app/admin/data/import"' not in response.text

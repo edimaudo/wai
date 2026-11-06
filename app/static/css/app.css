@@ -575,3 +575,23 @@ html[data-theme="dark"] .pillar-card a { color: #56c8f2; }
   .connection-state { padding: 1rem; }
   .workflow-directory { padding: 1rem; }
 }
+
+
+/* Compact navigation for multi-step workflow pages */
+.workflow-tabs { display:flex; gap:.35rem; overflow-x:auto; padding:.35rem; margin:0 0 1.25rem; border-bottom:1px solid var(--border-subtle, #c6c6c6); }
+.workflow-tab { flex:0 0 auto; border:0; border-bottom:3px solid transparent; padding:.75rem 1rem; background:transparent; color:var(--text-primary, #161616); font:inherit; font-weight:600; cursor:pointer; }
+.workflow-tab[aria-selected="true"] { border-bottom-color:#00AEEF; color:var(--text-primary, #161616); }
+.workflow-tab:focus-visible { outline:2px solid #00AEEF; outline-offset:2px; }
+[role="tabpanel"][hidden] { display:none !important; }
+.task-list { display:flex; flex-direction:column; }
+.task-row { display:flex; justify-content:space-between; align-items:flex-start; gap:1.5rem; padding:1.1rem 0; border-bottom:1px solid var(--border-subtle, #e0e0e0); }
+.task-row:last-child { border-bottom:0; }
+.task-main { min-width:0; flex:1; }
+.task-main p { margin:.45rem 0 0; color:var(--text-secondary, #525252); }
+.task-meta { display:flex; align-items:center; flex-wrap:wrap; justify-content:flex-end; gap:.65rem; }
+@media(max-width:760px) { .task-row { flex-direction:column; } .task-meta { justify-content:flex-start; } }
+
+.assessment-tabs { margin-top:1rem; }
+.assessment-tab-panels { min-width:0; }
+.assessment-tab-panel { min-width:0; }
+.assessment-tab-panel[hidden] { display:none !important; }

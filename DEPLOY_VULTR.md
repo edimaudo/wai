@@ -71,7 +71,7 @@ Keep the Supabase service-role key only in this server-side `.env` file. Do not 
 
 ## 4. Prepare Supabase
 
-In the Supabase dashboard, open **SQL Editor** and run the complete `sql/schema.sql` file from this project. The app connects to Supabase; the VM does not host a separate PostgreSQL database. The local `data/source` CSV folder is not included in the project archive; create it on the VM only if you intend to import approved CSV files.
+In the Supabase dashboard, open **SQL Editor** and run the complete `sql/schema.sql` file from this project. The app connects to Supabase; the VM does not host a separate PostgreSQL database. The local `data/source` CSV folder is not included in the project archive. Place the four approved CSV files in that folder on the VM; the app reads them directly in read-only mode and does not import them into Supabase.
 
 ## 5. Start the website
 

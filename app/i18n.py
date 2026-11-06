@@ -1,9 +1,9 @@
 EN = {
     "brand_tagline": "",
-    "funding": "Grant and Foundation Prospecting", "reporting": "Intelligent Reporting and Dashboard Narratives",
-    "donors": "Personalised Stewardship from CRM", "partnerships": "Due Diligence Agent for Ethical Partnerships",
-    "grants": "Proposal and Grant Compliance Assistant", "reviews": "Human review",
-    "administration": "Administration", "data": "Data management",
+    "funding": "Grant Prospecting", "reporting": "Donation Intelligence",
+    "donors": "Donor Stewardship", "partnerships": "Partnership Due Diligence",
+    "grants": "Proposal and Grant Compliance", "reviews": "Human review",
+    "administration": "Administration", "data": "Source data",
     "welcome": "A shared intelligence workspace for WaterAid Canada.", "language": "Language",
     "english": "English", "french": "Français", "home": "Home",
     "module_foundation": "This module is part of the shared Wai Intelligence workspace.",
@@ -24,7 +24,7 @@ EN = {
     "import_data": "Import data", "review_evidence": "Review evidence, decisions and drafts before they are used.",
     "no_pending_reviews": "No pending reviews", "no_pending_reviews_copy": "Items requiring human review will appear here as module workflows are implemented.",
     "funding_sources": "Funding sources", "funding_sources_copy": "Configure the curated Canadian source list and monitoring cadence.",
-    "assessment_criteria": "Assessment criteria", "assessment_criteria_copy": "Manage funding fit criteria and partnership review frameworks.",
+    "assessment_criteria": "Assessment criteria", "assessment_criteria_copy": "Manage funding fit criteria and partner research domains.",
     "next_build_stage": "Next build stage", "private_data_folder": "Private data folder", "file_inventory": "Current file inventory",
     "csv_detected": "CSV files detected", "recognized_datasets": "Recognized datasets", "not_mapped": "Not mapped",
     "recognized": "Recognized", "yes": "Yes", "no": "No", "data_folder_empty": "No CSV files are currently present in data/.",
@@ -53,7 +53,6 @@ EN = {
     "required": "Required", "enabled_in_schema": "Enabled in schema", "source_data": "Source data",
     "available_reporting_records": "Available reporting records", "back_dashboard": "Back to funding workspace",
     "import_data": "Import data", "not_associated": "Not mapped", "recognized": "Recognized",
-    "open_data_management": "Open data management", "gift_transactions": "Gift transactions",
     "crm_interactions": "CRM interactions", "video_email_records": "Video / email records",
     "shared_evidence_architecture": "Shared evidence architecture", "review_data_folder": "Review the data folder",
     "human_in_the_loop": "Human in the loop", "view_queue": "View queue", "administration_home": "Administration home",
@@ -73,7 +72,7 @@ EN = {
     "service_unavailable_copy": "The application cannot currently retrieve its Supabase data. Verify the database configuration and schema, then review the server logs.",
     "grants_feature_1": "Funding requirements", "grants_feature_2": "Proposal review", "grants_feature_3": "Logic models and indicators", "grants_feature_4": "Agreement obligations", "grants_feature_5": "Compliance tracking",
 
-    "core_workflows": "CORE WORKFLOWS", "portfolio_tools": "PORTFOLIO TOOLS", "organization_context": "Organization context",
+    "core_workflows": "CORE WORKFLOWS", "portfolio_tools": "PORTFOLIO TOOLS",
     "landing_title": "Turn evidence into better decisions for water, sanitation and hygiene.",
     "landing_description": "Research funding opportunities, understand fundraising and programme performance, prepare donor stewardship, assess ethical partnerships and manage grant commitments in one place.",
     "landing_cta": "Explore Wai Intelligence",
@@ -93,7 +92,7 @@ EN = {
     "donors_outputs": "A donor brief, source-dated context, preference-aware draft communication, follow-up suggestions and aggregate engagement reporting that does not expose personal information.", "donors_decision": "Fundraisers decide which information is appropriate and approve every communication and task. Uncertain or inferred details must be surfaced as questions and excluded from donor-facing drafts.",
     "partnerships_purpose": "Support ethical partnership assessments by organizing relevant public evidence against WaterAid’s approved standards, while making uncertainty, research coverage and escalation needs explicit.",
     "partnerships_feature_1": "Ownership, leadership and organizational profile", "partnerships_feature_2": "Regulatory, legal and public-record research", "partnerships_feature_3": "Environmental, social and safeguarding evidence", "partnerships_feature_4": "Source credibility, dates and coverage gaps", "partnerships_feature_5": "Criteria-linked Go/No-Go and escalation brief",
-    "partnerships_step_1": "Define the partner, scope and applicable approved WaterAid ethical partnership framework.", "partnerships_step_2": "Gather public-source information and record source date, reliability, coverage and relevant responses.", "partnerships_step_3": "Classify allegations, investigations, formal findings and responses separately; link each finding to a criterion.", "partnerships_step_4": "Identify evidence gaps, questions for staff and whether the case requires further advice or escalation.",
+    "partnerships_step_1": "Define the prospective partner and the scope of the review.", "partnerships_step_2": "Gather public-source information and record source date, reliability, coverage and relevant responses.", "partnerships_step_3": "Classify allegations, investigations, formal findings and responses separately; link each finding to a criterion.", "partnerships_step_4": "Identify evidence gaps, questions for staff and whether the case requires further advice or escalation.",
     "partnerships_outputs": "A structured assessment file, criteria-linked findings, source register, coverage and uncertainty statement, review questions and a documented recommendation for human consideration.", "partnerships_decision": "Authorized WaterAid staff interpret evidence and make the final Go/No-Go or escalation decision. Demonstration criteria remain labelled as assumptions unless the approved policy is loaded.",
     "grants_purpose": "Support proposal development and grant management by connecting donor requirements, proposal content, budgets, workplans, agreements, amendments and reporting obligations.",
     "grants_feature_1": "Funder guidance and eligibility requirements", "grants_feature_2": "Proposal critique and evidence-gap analysis", "grants_feature_3": "Past funded-project research, indicators and logic models", "grants_feature_4": "Agreement obligations and reporting schedules", "grants_feature_5": "Cross-document comparison and compliance risks",
@@ -103,12 +102,12 @@ EN = {
 
 FR = {
     "brand_tagline": "",
-    "funding": "Prospection de subventions et de fondations", "reporting": "Rapports intelligents et récits de tableaux de bord",
-    "donors": "Intendance personnalisée des donateurs à partir du CRM", "partnerships": "Agent de diligence raisonnable pour les partenariats éthiques",
-    "grants": "Assistant de propositions et de conformité des subventions", "reviews": "Révision humaine",
-    "administration": "Administration", "data": "Gestion des données",
+    "funding": "Prospection de subventions", "reporting": "Intelligence des dons",
+    "donors": "Relations avec les donateurs", "partnerships": "Diligence raisonnable des partenariats",
+    "grants": "Propositions et conformité des subventions", "reviews": "Révision humaine",
+    "administration": "Administration", "data": "Données sources",
     "welcome": "Un espace d’intelligence partagé pour WaterAid Canada.", "language": "Langue",
-    "english": "English", "french": "Français", "home": "Accueil",
+    "english": "Anglais", "french": "Français", "home": "Accueil",
     "module_foundation": "Ce module fait partie de l’espace partagé Wai Intelligence.",
     "module_status": "Base prête", "module_next": "La mise en œuvre des flux de travail constitue la prochaine étape.",
     "no_data": "Aucune donnée source n’a encore été importée.", "review_queue": "File de révision",
@@ -127,7 +126,7 @@ FR = {
     "import_data": "Importer les données", "review_evidence": "Examiner les preuves, les décisions et les ébauches avant leur utilisation.",
     "no_pending_reviews": "Aucune révision en attente", "no_pending_reviews_copy": "Les éléments nécessitant une révision humaine apparaîtront ici à mesure que les flux de travail seront mis en place.",
     "funding_sources": "Sources de financement", "funding_sources_copy": "Configurer la liste de sources canadiennes et la fréquence de surveillance.",
-    "assessment_criteria": "Critères d’évaluation", "assessment_criteria_copy": "Gérer les critères d’adéquation du financement et les cadres d’examen des partenariats.",
+    "assessment_criteria": "Critères d’évaluation", "assessment_criteria_copy": "Gérer les critères d’adéquation du financement et les domaines de recherche sur les partenaires.",
     "next_build_stage": "Prochaine étape de développement", "private_data_folder": "Dossier de données privé", "file_inventory": "Inventaire actuel des fichiers",
     "csv_detected": "Fichiers CSV détectés", "recognized_datasets": "Jeux de données reconnus", "not_mapped": "Non associé",
     "recognized": "Reconnu", "yes": "Oui", "no": "Non", "data_folder_empty": "Aucun fichier CSV n’est présent dans data/.",
@@ -156,14 +155,14 @@ FR = {
     "required": "Obligatoire", "enabled_in_schema": "Activé dans le schéma", "source_data": "Données sources",
     "available_reporting_records": "Enregistrements disponibles pour les rapports", "back_dashboard": "Retour à l’espace de financement",
     "import_data": "Importer les données", "not_associated": "Non associé", "recognized": "Reconnu",
-    "open_data_management": "Ouvrir la gestion des données", "gift_transactions": "Transactions de dons",
     "crm_interactions": "Interactions CRM", "video_email_records": "Enregistrements vidéo et courriel",
     "shared_evidence_architecture": "Architecture de preuves partagée", "review_data_folder": "Examiner le dossier de données",
     "human_in_the_loop": "Intervention humaine", "view_queue": "Voir la file", "administration_home": "Accueil de l’administration",
     "user": "Utilisateur", "action": "Action",
     "no_import_history": "Aucun historique d’importation n’est disponible pour le moment.",
     "nav_intelligence": "", "nav_work_management": "", "nav_main": "Navigation principale",
-    "medium_text": "Texte moyen", "large_text": "Texte grand", "theme_toggle": "Basculer entre le mode clair et sombre",
+    "font_size": "Taille du texte", "small_text": "Petit texte",
+    "medium_text": "Texte moyen", "large_text": "Grand texte", "theme_toggle": "Basculer entre le mode clair et sombre",
     "theme_title": "Mode clair / sombre", "data_overview": "Aperçu des données", "recognized_count": "reconnus",
     "not_mapped_label": "Non associé", "one_connected_workspace": "UN ESPACE DE TRAVAIL INTÉGRÉ", "built_around_evidence": "FONDÉ SUR DES PREUVES",
 "funding_label": "Financement", "reporting_label": "Rapports",
@@ -176,7 +175,7 @@ FR = {
     "service_unavailable_copy": "L’application ne peut pas récupérer ses données Supabase pour le moment. Vérifiez la configuration et le schéma de la base de données, puis consultez les journaux du serveur.",
     "grants_feature_1": "Exigences de financement", "grants_feature_2": "Révision des propositions", "grants_feature_3": "Modèles logiques et indicateurs", "grants_feature_4": "Obligations des ententes", "grants_feature_5": "Suivi de conformité",
 
-    "core_workflows": "FLUX DE TRAVAIL PRINCIPAUX", "portfolio_tools": "OUTILS DU PORTEFEUILLE", "organization_context": "Contexte organisationnel",
+    "core_workflows": "FLUX DE TRAVAIL PRINCIPAUX", "portfolio_tools": "OUTILS DU PORTEFEUILLE",
     "landing_title": "Transformer les données probantes en meilleures décisions pour l’eau, l’assainissement et l’hygiène.",
     "landing_description": "Recherchez des possibilités de financement, comprenez le rendement de la collecte de fonds et des programmes, préparez les communications avec les donateurs, évaluez les partenariats éthiques et gérez les engagements liés aux subventions au même endroit.",
     "landing_cta": "Explorer Wai Intelligence",
@@ -196,7 +195,7 @@ FR = {
     "donors_outputs": "Une fiche du donateur, un contexte daté et sourcé, un brouillon respectueux des préférences, des suggestions de suivi et des rapports agrégés sans renseignements personnels.", "donors_decision": "Le personnel décide quels renseignements sont appropriés et approuve chaque communication et chaque tâche. Les détails incertains ou inférés sont présentés sous forme de questions et exclus des brouillons destinés aux donateurs.",
     "partnerships_purpose": "Appuyer les évaluations de partenariats éthiques en organisant les preuves publiques pertinentes selon les normes approuvées de WaterAid et en rendant explicites les incertitudes, la couverture de recherche et les besoins d’escalade.",
     "partnerships_feature_1": "Profil de propriété, de direction et d’organisation", "partnerships_feature_2": "Recherche réglementaire, juridique et dans les dossiers publics", "partnerships_feature_3": "Preuves environnementales, sociales et de sauvegarde", "partnerships_feature_4": "Crédibilité, dates et lacunes des sources", "partnerships_feature_5": "Note de décision ou d’escalade liée aux critères",
-    "partnerships_step_1": "Définir le partenaire, la portée et le cadre de partenariat éthique approuvé applicable.", "partnerships_step_2": "Recueillir les renseignements publics et consigner la date, la fiabilité, la couverture et les réponses pertinentes.", "partnerships_step_3": "Distinguer les allégations, enquêtes, conclusions officielles et réponses; relier chaque constat à un critère.", "partnerships_step_4": "Relever les lacunes, les questions pour le personnel et les besoins d’avis ou d’escalade.",
+    "partnerships_step_1": "Définir le partenaire potentiel et la portée de l’examen.", "partnerships_step_2": "Recueillir les renseignements publics et consigner la date, la fiabilité, la couverture et les réponses pertinentes.", "partnerships_step_3": "Distinguer les allégations, enquêtes, conclusions officielles et réponses; relier chaque constat à un critère.", "partnerships_step_4": "Relever les lacunes, les questions pour le personnel et les besoins d’avis ou d’escalade.",
     "partnerships_outputs": "Un dossier d’évaluation structuré, des constats liés aux critères, un registre des sources, un énoncé de couverture et d’incertitude, des questions de révision et une recommandation documentée.", "partnerships_decision": "Le personnel autorisé de WaterAid interprète les preuves et prend la décision finale. Les critères de démonstration restent identifiés comme hypothèses tant que la politique approuvée n’est pas chargée.",
     "grants_purpose": "Appuyer l’élaboration des propositions et la gestion des subventions en reliant les exigences du bailleur, le contenu des propositions, les budgets, les plans de travail, les ententes, les modifications et les obligations de rapport.",
     "grants_feature_1": "Directives des bailleurs et exigences d’admissibilité", "grants_feature_2": "Critique des propositions et analyse des lacunes probantes", "grants_feature_3": "Recherche de projets financés, indicateurs et modèles logiques", "grants_feature_4": "Obligations des ententes et calendriers de rapport", "grants_feature_5": "Comparaison de documents et risques de conformité",
@@ -214,3 +213,94 @@ def get_translation(language: str):
         return translations.get(key, EN.get(key, key))
 
     return translate
+
+
+_DYNAMIC_LABELS = {
+    "en-CA": {},
+    "fr-CA": {
+        "funding": "Prospection de subventions", "reporting": "Intelligence des dons",
+        "donors": "Relations avec les donateurs", "partnerships": "Diligence raisonnable des partenariats",
+        "grants": "Propositions et conformité des subventions", "operations": "Opérations",
+        "open": "Ouvert", "in_progress": "En cours", "completed": "Terminé", "cancelled": "Annulé",
+        "pending": "En attente", "approved": "Approuvé", "rejected": "Rejeté",
+        "needs_changes": "Modifications requises", "escalated": "Transmis pour escalade",
+        "draft": "Ébauche", "draft_requires_review": "Ébauche à réviser", "pending_review": "En attente de révision",
+        "human_approved": "Approuvé par le personnel", "human_verified": "Vérifié par le personnel",
+        "low": "Faible", "medium": "Moyen", "high": "Élevé", "urgent": "Urgent",
+        "pursue": "Poursuivre", "decline": "Refuser", "need_more_info": "Information requise", "defer": "Reporter",
+        "eligible": "Admissible", "ineligible": "Non admissible", "uncertain": "Incertain", "not_assessed": "Non évalué",
+        "go": "Favorable", "no_go": "Défavorable", "escalate": "Escalader", "more_research": "Recherche supplémentaire",
+        "background": "Contexte", "allegation": "Allégation", "investigation": "Enquête", "formal_finding": "Conclusion officielle",
+        "response": "Réponse", "commitment": "Engagement", "other": "Autre",
+        "unassessed": "Non évaluée", "unverified": "Non vérifié", "staff_verified": "Vérifié par le personnel",
+        "ownership": "Propriété et contrôle", "leadership": "Direction et gouvernance", "legal": "Dossiers juridiques et réglementaires",
+        "environment": "Performance environnementale", "social": "Pratiques sociales et de travail",
+        "safeguarding": "Sauvegarde et droits de la personne", "transparency": "Transparence et philanthropie",
+        "corporate": "Entreprise", "foundation": "Fondation", "trust": "Fiducie", "government": "Gouvernement",
+        "proposal": "Proposition", "guidance": "Directives du bailleur", "agreement": "Entente de financement",
+        "amendment": "Modification", "budget": "Budget", "workplan": "Plan de travail", "progress_report": "Rapport d’avancement",
+        "binding": "Condition contraignante", "internal_assumption": "Hypothèse interne",
+        "board": "Conseil", "staff": "Personnel", "leadership audience": "Direction",
+        "funding_prospecting": "Prospection de subventions", "donor_stewardship": "Relations avec les donateurs",
+        "partner_go_no_go": "Décision de partenariat", "partner_evidence_review": "Révision des preuves de partenariat",
+        "report_approval": "Approbation du rapport", "grant_document_review": "Révision du document de subvention",
+        "funding_lead_verification": "Vérification d’une piste de financement",
+        "mission": "Mission", "geography": "Géographie", "eligibility": "Admissibilité", "timing": "Échéancier",
+        "daily": "Quotidienne", "weekly": "Hebdomadaire", "monthly": "Mensuelle", "quarterly": "Trimestrielle", "manual": "Manuelle",
+        "new": "Nouveau", "changed": "Modifié", "unchanged": "Inchangé", "error": "Erreur",
+        "requires_human_verification": "Vérification humaine requise", "uncertain": "Incertain",
+        "not_started": "Non commencé", "complete": "Terminé", "completed_with_errors": "Terminé avec erreurs",
+        "phone": "Téléphone", "email": "Courriel", "mail": "Poste", "none": "Aucun",
+        "executive summary": "Résumé exécutif", "observed changes": "Changements observés",
+        "possible explanations": "Explications possibles", "risks or opportunities": "Risques ou possibilités",
+        "questions for staff": "Questions pour le personnel", "data limitations": "Limites des données",
+        "total giving": "Total des dons", "gift transactions": "Transactions de dons",
+        "repeat donor rate": "Taux de donateurs récurrents", "average gift": "Don moyen",
+        "email open rate": "Taux d’ouverture des courriels", "email click rate": "Taux de clics des courriels",
+        "video start rate": "Taux de démarrage des vidéos", "crm interactions": "Interactions CRM",
+        "draft requires review": "Ébauche à réviser", "decision recorded pending approval": "Décision consignée, en attente d’approbation",
+        "unassigned": "Non attribué", "not recorded": "Non consigné", "not checked": "Non vérifié",
+        "missing_proposal_document": "Document de proposition manquant", "proposal_document_review": "Révision du document de proposition",
+        "missing_document": "Document manquant", "overdue_obligation": "Obligation en retard",
+        "unverified_obligation": "Obligation non vérifiée",
+        "communication preferences and consent have not been verified.": "Les préférences de communication et le consentement n’ont pas été vérifiés.",
+        "no permitted communication channel is recorded.": "Aucun canal de communication autorisé n’est consigné.",
+        "the recorded preference blocks all communications.": "La préférence consignée bloque toute communication.",
+        "the recorded preference prohibits the selected email channel.": "La préférence consignée interdit le canal courriel sélectionné.",
+        "the source data includes an unsubscribe event; do not prepare email outreach until the status is reconciled.": "Les données sources indiquent un désabonnement; ne préparez aucun courriel avant d’avoir vérifié ce statut.",
+        "gemini is not configured. configure gemini_api_key to draft a message. no message was sent.": "Gemini n’est pas configuré. Configurez GEMINI_API_KEY pour préparer un message. Aucun message n’a été envoyé.",
+        "source file is missing required columns": "Le fichier source ne contient pas toutes les colonnes requises",
+    },
+}
+
+
+def localize_value(value, language: str = "en-CA") -> str:
+    """Translate common stored enum/status values without changing user/source text."""
+    text = str(value or "")
+    if language != "fr-CA":
+        return text.replace("_", " ").title() if "_" in text else text
+    mapping = _DYNAMIC_LABELS["fr-CA"]
+    key = text.strip().lower()
+    if key in mapping:
+        return mapping[key]
+    normalized = key.replace("_", " ")
+    if normalized in mapping:
+        return mapping[normalized]
+    if key in mapping:
+        return mapping[key]
+    if "is missing required columns:" in text:
+        prefix, detail = text.split("is missing required columns:", 1)
+        return f"{prefix.strip()} : colonnes requises manquantes :{detail}"
+    if key.startswith("the recorded preference prohibits the selected "):
+        channel = key.replace("the recorded preference prohibits the selected ", "").replace(" channel.", "")
+        channel_fr = mapping.get(channel, channel)
+        return f"La préférence consignée interdit le canal {channel_fr} sélectionné."
+    if key.startswith("the recorded preference prohibits solicitation;"):
+        return "La préférence consignée interdit la sollicitation, mais l’objectif comprend une demande de don."
+    if text.startswith("No proposal draft is attached"):
+        return "Aucune ébauche de proposition n’est jointe à ce dossier."
+    if text.startswith("No ") and " document is on file." in text:
+        return "Aucun document correspondant n’est au dossier."
+    if text.endswith("requires staff review."):
+        return text[:-len("requires staff review.")].strip() + " doit être révisé par le personnel."
+    return text.replace("_", " ").title()

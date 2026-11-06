@@ -60,4 +60,95 @@
       savePreferences({ ...current, theme });
     });
   }
+
+  // Long operational workflows use tabs to keep related steps together and reduce page length.
+  const tabbedPaths = new Set(["/app/funding", "/app/reporting", "/app/partnerships", "/app/grants"]);
+  const path = window.location.pathname.replace(/\/$/, "");
+  const main = document.getElementById("main-content");
+  if (main && tabbedPaths.has(path)) {
+    const panels = Array.from(main.children).filter((node) => node.tagName === "SECTION" && node.querySelector("h2"));
+    if (panels.length > 1) {
+      const tabs = document.createElement("div");
+      tabs.className = "workflow-tabs";
+      tabs.setAttribute("role", "tablist");
+      tabs.setAttribute("aria-label", "Workflow sections");
+      panels.forEach((panel, index) => {
+        const heading = panel.querySelector("h2");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "workflow-tab";
+        button.id = `workflow-tab-${index}`;
+        button.setAttribute("role", "tab");
+        button.setAttribute("aria-controls", `workflow-panel-${index}`);
+        button.setAttribute("aria-selected", String(index === 0));
+        button.tabIndex = index === 0 ? 0 : -1;
+        button.textContent = heading ? heading.textContent.trim() : `Section ${index + 1}`;
+        panel.id = `workflow-panel-${index}`;
+        panel.setAttribute("role", "tabpanel");
+        panel.setAttribute("aria-labelledby", button.id);
+        panel.hidden = index !== 0;
+        button.addEventListener("click", () => {
+          panels.forEach((candidate, candidateIndex) => {
+            const active = candidateIndex === index;
+            candidate.hidden = !active;
+            tabs.children[candidateIndex].setAttribute("aria-selected", String(active));
+            tabs.children[candidateIndex].tabIndex = active ? 0 : -1;
+          });
+        });
+        tabs.appendChild(button);
+      });
+      const firstPanel = panels[0];
+      main.insertBefore(tabs, firstPanel);
+    }
+  }
+
+
+  // Each partner case separates its summary, research work and decision step.
+  document.querySelectorAll(".assessment-card").forEach((card, caseIndex) => {
+    const overviewNodes = [card.querySelector(":scope > .panel-heading"), card.querySelector(":scope > .summary-list"), card.querySelector(":scope > .table-wrap.content-section")].filter(Boolean);
+    const researchNode = card.querySelector(":scope > .content-section.two-column-grid");
+    const decisionNode = card.querySelector(":scope > .decision-panel");
+    const groups = [
+      { label: document.documentElement.lang === "fr-CA" ? "Aperçu" : "Overview", nodes: overviewNodes },
+      { label: document.documentElement.lang === "fr-CA" ? "Recherche" : "Research", nodes: researchNode ? [researchNode] : [] },
+      { label: document.documentElement.lang === "fr-CA" ? "Décision" : "Decision", nodes: decisionNode ? [decisionNode] : [] }
+    ].filter((group) => group.nodes.length);
+    if (groups.length < 2) return;
+    const nav = document.createElement("div");
+    nav.className = "workflow-tabs assessment-tabs";
+    nav.setAttribute("role", "tablist");
+    const panels = document.createElement("div");
+    panels.className = "assessment-tab-panels";
+    groups.forEach((group, index) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "workflow-tab";
+      button.id = `assessment-${caseIndex}-tab-${index}`;
+      button.setAttribute("role", "tab");
+      button.setAttribute("aria-selected", String(index === 0));
+      button.tabIndex = index === 0 ? 0 : -1;
+      button.textContent = group.label;
+      const panel = document.createElement("div");
+      panel.className = "assessment-tab-panel";
+      panel.id = `assessment-${caseIndex}-panel-${index}`;
+      panel.setAttribute("role", "tabpanel");
+      panel.setAttribute("aria-labelledby", button.id);
+      panel.hidden = index !== 0;
+      group.nodes.forEach((node) => panel.appendChild(node));
+      button.setAttribute("aria-controls", panel.id);
+      button.addEventListener("click", () => {
+        Array.from(nav.children).forEach((tab, tabIndex) => {
+          const active = tabIndex === index;
+          tab.setAttribute("aria-selected", String(active));
+          tab.tabIndex = active ? 0 : -1;
+          panels.children[tabIndex].hidden = !active;
+        });
+      });
+      nav.appendChild(button);
+      panels.appendChild(panel);
+    });
+    card.insertBefore(nav, card.firstChild);
+    card.appendChild(panels);
+  });
+
 })();

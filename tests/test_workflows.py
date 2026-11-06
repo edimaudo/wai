@@ -116,47 +116,6 @@ def test_unsubscribe_event_blocks_email_until_reconciled():
     assert any("unsubscribe" in reason.lower() for reason in reasons)
 
 
-def test_partner_framework_activation_requires_every_active_criterion_mapping(monkeypatch):
-    document_id = "policy-doc-1"
-    doc = {"id": document_id, "filename": "Approved policy.pdf", "extracted_text": "Clause text",
-           "framework_version": "Approved policy (abc12345)"}
-    criteria = [
-        {"id": "criterion-1", "title": "Ownership", "is_active": True,
-         "policy_document_id": document_id, "policy_clause_reference": "4.1"},
-        {"id": "criterion-2", "title": "Safeguarding", "is_active": True,
-         "policy_document_id": None, "policy_clause_reference": None},
-    ]
-    monkeypatch.setattr(wf, "get_row", lambda table, row_id: doc if table == "partner_framework_documents" else None)
-    monkeypatch.setattr(wf, "ensure_partner_criteria", lambda: criteria)
-    with pytest.raises(wf.WorkflowError, match="Safeguarding"):
-        wf.activate_partner_framework(document_id)
-
-
-def test_partner_framework_activation_records_version_after_complete_mapping(monkeypatch):
-    document_id = "policy-doc-1"
-    doc = {"id": document_id, "filename": "Approved policy.pdf", "extracted_text": "Clause text",
-           "framework_version": "Approved policy (abc12345)"}
-    criteria = [{"id": "criterion-1", "title": "Ownership", "is_active": True,
-                 "policy_document_id": document_id, "policy_clause_reference": "4.1"}]
-    updates = []
-    class Query:
-        def update(self, payload):
-            updates.append(("bulk", payload)); return self
-        def eq(self, *args): return self
-        def execute(self): return type("Result", (), {"data": []})()
-    class Client:
-        def table(self, name): return Query()
-    monkeypatch.setattr(wf, "_client", lambda: Client())
-    monkeypatch.setattr(wf, "get_row", lambda table, row_id: doc)
-    monkeypatch.setattr(wf, "ensure_partner_criteria", lambda: criteria)
-    monkeypatch.setattr(wf, "update_row", lambda table, row_id, payload: updates.append((table, row_id, payload)) or {"id": row_id, **payload})
-    monkeypatch.setattr(wf, "create_approval", lambda *args, **kwargs: {"id": "approval-1"})
-    monkeypatch.setattr(wf, "audit", lambda *args, **kwargs: None)
-    result = wf.activate_partner_framework(document_id)
-    assert result["status"] == "active"
-    assert any(item[0] == "partner_framework_criteria" and item[2]["framework_version"] == doc["framework_version"] for item in updates)
-
-
 def test_funder_brief_includes_recorded_direct_network_connections(monkeypatch):
     monkeypatch.setattr(wf, "get_funding_criteria", lambda: {})
     monkeypatch.setattr(wf, "score_funding_opportunity", lambda *args: (80, {"mission": 80}, []))
@@ -178,3 +137,61 @@ def test_funder_brief_includes_recorded_direct_network_connections(monkeypatch):
     brief = wf.build_funder_brief({"funder_name": "Canadian Foundation", "title": "WASH call"}, None, "en-CA")
     assert brief["network_connections"][0]["connected_party"] == "WaterAid Canada"
     assert "staff_verified" in brief["text"]
+
+
+def test_source_csvs_are_read_directly_without_database_import(monkeypatch, tmp_path):
+    from pathlib import Path
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "gift_transactions_table.csv").write_text(
+        "CONSTITUENT_ID,GIFT_DATE,AMOUNT\nC-1,2024-01-05,125.50\n", encoding="utf-8")
+    (source / "CRM_interacions_table.csv").write_text(
+        "CONSTITUENT_ID,CRM_INTERACTION_DATE,CRM_INTERACTION_TYPE\nC-1,2024-01-06,Phone\n", encoding="utf-8")
+    (source / "constituent_profile_table.csv").write_text(
+        "CONSTITUENT_ID,MANAGED_PROSPECT,LIFETIME_GIVING,LIFETIME_GIFT_COUNT,FIRST_GIFT_DATE,LAST_GIFT_DATE,LIFETIME_CRM_INTERACTIONS,FIRST_CRM_INTERACTION_DATE,LAST_CRM_INTERACTION_DATE,CAPACITY_ESTIMATE\nC-1,1,125.50,1,2024-01-05,2024-01-05,1,2024-01-06,2024-01-06,1000-4999\n", encoding="utf-8")
+    (source / "video_email_data_table.csv").write_text(
+        "CONSTITUENT_ID,CONTACT_ID,SENT_DATE,OPENED_DATE,STARTED_VIDEO_DATE,BOUNCED,UNSUBSCRIBED,CLICKS,VIDEO_VIEWS,STARTED_VIDEO,WATCHED_VIDEO_25_PERCENT,WATCHED_VIDEO_50_PERCENT,WATCHED_VIDEO_75_PERCENT,FINISHED_VIDEO,VIDEO_SHARES_TO_FACEBOOK\nC-1,1,2024-01-07,2024-01-07,,0,0,1,0,0,0,0,0,0,0\n", encoding="utf-8")
+    monkeypatch.setattr(wf.settings, "data_dir", tmp_path)
+    assert wf.source_data_status()["ready"] is True
+    analytics = wf.reporting_analytics()
+    assert analytics["gift_count"] == 1
+    assert analytics["total_giving"] == 125.5
+    assert analytics["crm_interactions"] == 1
+    assert analytics["email_delivered"] == 1
+    assert wf.rows_where("gift_transactions", "constituent_id", "C-1")[0]["amount"] == 125.5
+
+
+def test_source_status_identifies_missing_approved_csvs(monkeypatch, tmp_path):
+    monkeypatch.setattr(wf.settings, "data_dir", tmp_path)
+    status = wf.source_data_status()
+    assert status["ready"] is False
+    assert "gift_transactions_table.csv" in status["missing"]
+
+
+def test_donor_workspace_includes_constituents_found_in_any_source_file(monkeypatch):
+    tables = {
+        "constituent_profiles": [{"constituent_id": "profile-1", "managed_prospect": True}],
+        "gift_transactions": [{"constituent_id": "gift-only", "gift_date": "2024-01-01", "amount": 50}],
+        "crm_interactions": [{"constituent_id": "crm-only", "crm_interaction_date": "2024-01-02"}],
+        "video_email_events": [{"constituent_id": "email-only", "sent_date": "2024-01-03"}],
+    }
+    monkeypatch.setattr(wf, "all_rows", lambda table, **kwargs: tables.get(table, []))
+    donors = wf.donor_workspace()
+    assert {item["constituent_id"] for item in donors} == {"profile-1", "gift-only", "crm-only", "email-only"}
+
+
+def test_evidence_register_collapses_duplicate_source_captures(monkeypatch):
+    duplicate = {"source_url": "https://example.org/report", "source_title": "Report",
+                 "excerpt": "Same captured source", "checked_at": "2024-01-02"}
+    monkeypatch.setattr(wf, "all_rows", lambda *args, **kwargs: [duplicate, {**duplicate, "checked_at": "2024-01-01"}])
+    assert len(wf.evidence_workspace()) == 1
+
+
+def test_source_status_reports_invalid_csv_schema(monkeypatch, tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "gift_transactions_table.csv").write_text("ID,VALUE\n1,10\n", encoding="utf-8")
+    monkeypatch.setattr(wf.settings, "data_dir", tmp_path)
+    status = wf.source_data_status()
+    assert any("gift_transactions_table.csv is missing required columns" in error for error in status["errors"])
+    assert status["record_counts"]["gift_transactions"] == 0
